@@ -91,3 +91,5 @@ if [[ $? -eq 0 ]]; then
 else
     echo "Usuario não validado no AD XXX"
 fi
+# Comando de pausa com prompt
+read -p "Pressione [Enter] para continuar..."
