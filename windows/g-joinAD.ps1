@@ -33,6 +33,13 @@ Observações:
 ------------
 - A permissão é apenas para criação de objetos `computer`.
 - Pode ser adaptado para delegar em OUs personalizadas ou para conceder permissões adicionais.
+
+Sugestão Adiconal:
+------------------
+- Faça uma copia da conta convidado do Active Directory e dê o nome de "usr_joinad" ;  mantenha ela no repositorio padrão (CN=Users,<domínio>).
+- Forneça uma senha; configure a conta para nunca expirar; o mesmo vale para a senha - nunca expirar.
+- Adicione a conta ao grupo G-JoinAD.
+- Utilize-a para adiconar computadores ou servidores Linux.
 #>
 
 # Importa o módulo Active Directory
