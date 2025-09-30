@@ -1,3 +1,23 @@
+# /bash/bin
+# exemplo de uso
+
+# ============================================================
+#
+#  read -rp "Grupo a verificar: " grupo
+#  read -rp "Conta UPN: " upn
+#  echo -n "Senha: "
+#  read -s senha
+#  echo
+#  
+#  if verificar_grupo_ad "$grupo" "$upn" "$senha"; then
+#      echo "Sucesso: o grupo existe no AD."
+#  else
+#      echo "Falha: o grupo não foi encontrado."
+#  fi
+#
+# =============================================================
+
+
 verificar_grupo_ad() {
     local grupo="$1"
     local upn="$2"
