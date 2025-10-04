@@ -54,7 +54,7 @@ validate_upn() {
 while true; do
     clear_screen
     show_banner
-    read -p "Digite usuario (UPN): " USER_UPN
+    read -erp "Digite usuario (UPN): " USER_UPN
     if validate_upn "$USER_UPN"; then
         break
     else
@@ -88,7 +88,7 @@ echo ""
 echo "O comando de validação será:"
 echo "  kinit ${ad_prefix}@${REALM}"
 echo ""
-read -p "Posso prosseguir? (s/n): " CONFIRM
+read -erp "Posso prosseguir? (s/n): " CONFIRM
 if [[ "$CONFIRM" != "s" && "$CONFIRM" != "S" ]]; then
     echo "Operação cancelada pelo usuário."
     exit 1
