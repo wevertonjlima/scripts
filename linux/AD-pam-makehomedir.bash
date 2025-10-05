@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # ============================================================================
-# Nome do Arquivo: AD-pam-makehomedir-function.bash
+# Nome do Arquivo: AD-pam-makehomedir.bash
 # IA Generated: Sim (ChatGPT - OpenAI)
 # Data de Geração: 03/10/2025
 # ============================================================================
