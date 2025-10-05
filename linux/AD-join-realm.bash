@@ -13,10 +13,11 @@
 #
 # USO:
 #   1. Defina as variáveis de ambiente antes de chamar a função:
-#        - AD_DOMAIN  : Nome do domínio (ex: empresa.local)
-#        - AD_UPN     : Conta UPN com permissão para ingressar a máquina (ex: user@empresa.local)
+#        - AD_DOMAIN  : Nome do AD DNS domínio ............................... (ex: empresa.local )
+#        - AD_REALM   : Nome do AD KERBEROS domínio .......................... (ex: EMPRESA.LOCAL )
+#        - AD_UPN     : Conta UPN com permissão para ingressar a máquina ..... (ex: user@empresa.local )
 #        - AD_PASS1   : Senha dessa conta (variável sensível)
-#        - AD_GROUP   : Grupo AD que terá permissão de login.
+#        - AD_GROUP   : Grupo AD que terá permissão de login ..................(ex: Domain-Linux-Admins )
 #
 #   2. Execute com:
 #        source join_ad_domain.sh
@@ -31,7 +32,12 @@
 # Descrição: Ingressa servidor no domínio AD via realmd/realm
 # ============================================================
 
-join_ad_domain() {
+# ============================================================
+# Função: join_ad_domain
+# Descrição: Ingressa servidor no domínio AD via realmd/realm
+# ============================================================
+
+init_join_ad_realm() {
     echo " Descobrindo domínio..."
     sleep 0.5
     realm discover "$AD_DOMAIN"
@@ -55,3 +61,5 @@ join_ad_domain() {
     fi
     echo " Apenas o grupo '$AD_GROUP' tem permissão de login."
 }
+
+#init_join_ad_realm
