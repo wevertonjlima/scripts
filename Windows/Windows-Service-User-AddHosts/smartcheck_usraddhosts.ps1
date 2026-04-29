@@ -557,7 +557,7 @@ while (-not $GlobalExit) {
             }
         }
     } while (-not $InnerExit)
-
+}
 
 # --- [7] FINALIZACAO ---
 Write-Host ""
