@@ -89,6 +89,9 @@ do {
 } until ($OUExists)
 
 # --- [4] CRIACAO DO USUARIO E REGRAS DE NOME ---
+# FIX: Captura o sufixo DNS para garantir o preenchimento do Logon Name (UPN)
+$DomainDNS = (Get-ADDomain).DNSRoot
+
 do {
     $ValidName = $true
     Write-Host "`n[ETAPA 3] - Criando a Conta de Servico" -ForegroundColor Yellow
@@ -123,13 +126,25 @@ do {
 
 try {
     Write-Host "`n Criando usuario $UserName..." -ForegroundColor Yellow
-    $NewUserObj = New-ADUser -Name $UserName -SamAccountName $UserName -Path $UserOU -AccountPassword $Pass1 -Enabled $true -PasswordNeverExpires $true -PassThru
-    Write-Log "Sucesso: Usuario $UserName criado em $UserOU"
+    
+    # FIX: Inclusao do parametro -UserPrincipalName concatenando o nome com o sufixo DNS
+    $NewUserObj = New-ADUser -Name $UserName `
+                             -SamAccountName $UserName `
+                             -UserPrincipalName "$UserName@$DomainDNS" `
+                             -Path $UserOU `
+                             -AccountPassword $Pass1 `
+                             -Enabled $true `
+                             -PasswordNeverExpires $true `
+                             -PassThru
+                             
+    Write-Log "Sucesso: Usuario $UserName criado em $UserOU com UPN $UserName@$DomainDNS"
+    Write-Host " Usuario criado com sucesso!" -ForegroundColor Green
 } catch {
     Write-Host " Falha ao criar usuario: $_" -ForegroundColor Red
     Write-Log "Erro fatal na criacao do usuario: $_"
     exit
 }
+
 
 # --- [5] DELEGACAO DE PERMISSOES ---
 Write-Host " Aplicando delegacao de controle (Windows/Linux Support)..." -ForegroundColor Yellow
