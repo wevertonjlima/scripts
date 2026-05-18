@@ -63,6 +63,7 @@ mod_next() {
 
 # MÓDULO 1: BANNER E BOAS-VINDAS (COM AJUSTE DE FQDN IDEMPOTENTE) %%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 mod1_banner() {
     clear
     echo ""
@@ -73,12 +74,12 @@ mod1_banner() {
     echo "    ======================================================================"
     echo ""
     echo "        OBJETIVO:"
-    echo "        - Configurar este servidor Oracle Linux para se unir a um domínio"
-    echo "          Active Directory, permitindo login de usuários."
+    echo "        - Configurar este servidor Oracle Linux para se unir a um dominio"
+    echo "          Active Directory, permitindo login de usuarios."
     echo ""
     echo "        CARACTERISTICAS:"
-    echo "        - Controle de login local/ssh através de Grupo de Segurança do AD"
-    echo "        - Permissao de root através de Grupo de Segurança do AD"
+    echo "        - Controle de login local/ssh através de Grupo de Seguranca do AD"
+    echo "        - Permissao de root através de Grupo de Seguranca do AD"
     echo "        - Cache de credenciais permitindo login offline"
     echo "        - Envio automatico das informacoes do SO (OS, Kernel) para o AD"
     echo ""
@@ -116,8 +117,10 @@ mod1_banner() {
     while true; do
         clear
         
-        # Coleta dinamica do Hostname e Rede
+        # Coleta dinamica do Hostname e isolamento do nome curto (Ajuste Cirurgico)
         local CURRENT_HOSTNAME=$(hostname)
+        local SHORT_HOSTNAME=$(echo "$CURRENT_HOSTNAME" | cut -d'.' -f1)
+        
         local INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
         [ -z "$INTERFACE" ] && INTERFACE=$(ip -4 addr show up | grep -v '127.0.0.1' | awk '/inet / {print $NF}' | head -n1)
         
@@ -146,33 +149,30 @@ mod1_banner() {
 
         # --- BANNER-LOOP ---
         echo "    ======================================================================"
-        echo "                >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
+        echo "                    >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
         echo "    ======================================================================"
-        echo "                - Hostname ...: $CURRENT_HOSTNAME"
-        echo "                "
-        echo "                - IP Add .....: $IP_ADD"
-        echo "                - Mascara ....: $MASK_LEGIVEL"
-        echo "                - Gateway ....: $GATEWAY"
-        echo "                - DNS ........: $DNS_SERVER"
-        echo "                "
-        echo "                - DHCP SERVER.: $DHCP_SERVER"
+        echo "                    - Hostname ...: $SHORT_HOSTNAME"
+        echo "                    "
+        echo "                    - IP Add .....: $IP_ADD"
+        echo "                    - Mascara ....: $MASK_LEGIVEL"
+        echo "                    - Gateway ....: $GATEWAY"
+        echo "                    - DNS ........: $DNS_SERVER"
+        echo "                    "
+        echo "                    - DHCP SERVER.: $DHCP_SERVER"
         echo "    ----------------------------------------------------------------------"
 
-        # --- LOGICA DE VALIDACAO ---
-        if [ "$CURRENT_HOSTNAME" != "localhost" ] && [ "$CURRENT_HOSTNAME" != "localhost.localdomain" ] && [ -n "$CURRENT_HOSTNAME" ]; then
+        # --- LOGICA DE VALIDACAO USANDO O NOME CURTO ---
+        if [ "$SHORT_HOSTNAME" != "localhost" ] && [ -n "$SHORT_HOSTNAME" ]; then
             # Hostname valido detectado
             read -erp "    Deseja prosseguir ? (s/n): " CONF_PROSSEGUIR
             CONF_PROSSEGUIR=$(echo "$CONF_PROSSEGUIR" | tr '[:upper:]' '[:lower:]')
             if [[ "$CONF_PROSSEGUIR" == "s" ]]; then
                 
                 # --- [ CORRECAO DE IDEMPOTENCIA E FQDN ] ---
-                # Garante que o hostname atual sera tratado para conter o FQDN antes do join
-                # Ex: Se for 'bishop' vira 'bishop.dexter.labs'
-                # Ex: Se for 'bishop.dexter.labs' CONTINUA 'bishop.dexter.labs'
-                
+                # Como SHORT_HOSTNAME ja removeu tudo apos o ponto de forma garantida,
+                # nao precisamos mais do sed fragil. A montagem fica 100% limpa.
                 local DOMAIN_LOWER=$(echo "$AD_DOMAIN" | tr '[:upper:]' '[:lower:]')
-                # Remove o dominio do nome atual para evitar duplicacao (sed remove o .dominio)
-                local CLEAN_NAME=$(echo "$CURRENT_HOSTNAME" | sed "s/\.${DOMAIN_LOWER}//g")
+                local CLEAN_NAME="$SHORT_HOSTNAME"
                 local FINAL_FQDN="${CLEAN_NAME}.${DOMAIN_LOWER}"
                 
                 echo "    [*] Ajustando FQDN para idempotencia: $FINAL_FQDN"
@@ -189,16 +189,16 @@ mod1_banner() {
                 exit 0
             fi
         else
-            # Erro: Hostname e localhost
+            # Erro: Hostname eh localhost ou derivado
             echo "    ERROR !!!"
-            echo "    O nome do computador não pode ser ingressado como localhost."
+            echo "    O nome do computador nao pode ser ingressado como localhost."
             echo ""
             read -erp "    Deseja ALTERAR o hostname ? (s/n): " ALTERAR
             ALTERAR=$(echo "$ALTERAR" | tr '[:upper:]' '[:lower:]')
             
             if [[ "$ALTERAR" != "s" ]]; then
                 echo ""
-                echo "    O script não pode continuar com hostname invalido. Saindo..."
+                echo "    O script nao pode continuar com hostname invalido. Saindo..."
                 exit 1
             fi
             
@@ -206,12 +206,15 @@ mod1_banner() {
             while true; do
                 clear
                 echo "    ======================================================================"
-                echo "                >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
+                echo "                    >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
                 echo "    ======================================================================"
                 echo ""
                 echo "    Informe o novo hostname, até 15 caracteres !"
                 echo "    (ex.: server-infra01)"
                 read -erp "    Digite: " NEW_HOSTNAME
+                
+                # Garante limpeza caso o usuario digite com pontos por engano aqui tambem
+                NEW_HOSTNAME=$(echo "$NEW_HOSTNAME" | cut -d'.' -f1)
                 
                 if [ ${#NEW_HOSTNAME} -gt 15 ]; then
                     echo "    [X] Erro: O nome ultrapassa 15 caracteres padrao NetBIOS. Tente novamente."
@@ -243,13 +246,13 @@ mod1_banner() {
                 exit 0
             fi
             
-            # Aplica a mudanca com o dominio para ja nascer com FQDN
+            # Aplica a mudanca com o dominio para ja nascer com FQDN correto
             local DOMAIN_LOWER=$(echo "$AD_DOMAIN" | tr '[:upper:]' '[:lower:]')
             sudo hostnamectl set-hostname "${NEW_HOSTNAME}.${DOMAIN_LOWER}"
             
             clear
             echo "    ======================================================================"
-            echo "    Após o reboot, utilize novamente o script \"integra-ad\"."
+            echo "    Apos o reboot, utilize novamente o script \"integra-ad\"."
             echo "    ======================================================================"
             echo "    [*] Reiniciando o sistema em 5 segundos..."
             sleep 5
