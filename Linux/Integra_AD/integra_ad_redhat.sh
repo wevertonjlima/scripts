@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# ======================================================================
-# Script: Integracao Oracle Linux 9 com Active Directory
-# Filename: integra_ad_ol9.sh
+# Script: Integracao Oracle Linux 9 com Active Directory  %%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # 
 # DESCRICAO:
 #   Script para integrar Oracle Linux 9.x ao Active Directory,
@@ -39,10 +38,11 @@
 # Autor: Adaptado de script Ubuntu para Oracle Linux
 # ======================================================================
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# FUNÇÕES AUXILIARES
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+# FUNÇÕES AUXILIARES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#
 # Verifica se é root
 if [[ $EUID -ne 0 ]]; then
     echo ""
@@ -52,24 +52,24 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+
 # Função de pausa entre módulos
 mod_next() {
     printf "\n\n    >>> Prosseguindo...\n\n"
-    sleep 3
+    sleep 4
 }
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 1: BANNER E BOAS-VINDAS (COM AJUSTE DE FQDN IDEMPOTENTE)
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+# MÓDULO 1: BANNER E BOAS-VINDAS (COM AJUSTE DE FQDN IDEMPOTENTE) %%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 mod1_banner() {
     clear
     echo ""
     echo "    ======================================================================"
     echo "              INTEGRACAO ORACLE LINUX 9 COM ACTIVE DIRECTORY"
     echo "    ----------------------------------------------------------------------"
-    echo "                    >> ETAPA 1/9: Bem-Vindo!"
+    echo "                    >> ETAPA 1/10: Bem-Vindo!"
     echo "    ======================================================================"
     echo ""
     echo "        OBJETIVO:"
@@ -146,7 +146,7 @@ mod1_banner() {
 
         # --- BANNER-LOOP ---
         echo "    ======================================================================"
-        echo "                >> ETAPA 1/9: CONFIRMACAO DO HOSTNAME"
+        echo "                >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
         echo "    ======================================================================"
         echo "                - Hostname ...: $CURRENT_HOSTNAME"
         echo "                "
@@ -206,7 +206,7 @@ mod1_banner() {
             while true; do
                 clear
                 echo "    ======================================================================"
-                echo "                >> ETAPA 1/9: CONFIRMACAO DO HOSTNAME"
+                echo "                >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
                 echo "    ======================================================================"
                 echo ""
                 echo "    Informe o novo hostname, até 15 caracteres !"
@@ -262,15 +262,15 @@ mod1_banner() {
 }
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 2: INSTALACAO DE PACOTES
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# MÓDULO 2: INSTALACAO DE PACOTES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod2_install() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                    >> ETAPA 2/9: INSTALACAO DE PACOTES"
+    echo "                    >> ETAPA 2/10: INSTALACAO DE PACOTES"
     echo "    ----------------------------------------------------------------------"
     echo "              Instalando dependencias para integracao com AD"
     echo "    ======================================================================"
@@ -353,15 +353,15 @@ mod2_install() {
 }
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 3: CONFIGURACAO DO FIREWALL
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# MÓDULO 3: CONFIGURACAO DO FIREWALL %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod3_firewall() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                   >> ETAPA 3/9: CONFIGURACAO DO FIREWALL"
+    echo "                   >> ETAPA 3/10: CONFIGURACAO DO FIREWALL"
     echo "    ----------------------------------------------------------------------"
     echo "              Liberando portas para comunicacao com o AD"
     echo "    ======================================================================"
@@ -402,14 +402,16 @@ mod3_firewall() {
     mod_next
 }
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 4: COLETA E VALIDACAO DOS DADOS DO AD (VERSAO AIR-GAPPED)
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+# MODULO 4: COLETA E VALIDACAO DOS DADOS DO AD (VERSAO AIR-GAPPED) %%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod4_adinfo() {
     clear
     echo "======================================================================"
-    echo "    >> ETAPA 4/9: COLETA E VALIDACAO DOS DADOS DO AD"
+    echo "    >> ETAPA 4/10: COLETA E VALIDACAO DOS DADOS DO AD"
     echo "======================================================================"
     echo ""
 
@@ -516,14 +518,14 @@ mod4_adinfo() {
     echo "[*] Dados validados e Hostname atualizado."
     
     export AD_DOMAIN AD_DC AD_BASE_DN AD_UPN AD_PASS AD_GROUP AD_REALM
-    
-    sleep 2
+        
     mod_next
 }
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 5: ADESAO AO DOMINIO (REALM JOIN)
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# MODULO 5: ADESAO AO DOMINIO (REALM JOIN) %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod5_adjoin() {
     clear
@@ -536,7 +538,7 @@ mod5_adjoin() {
     # 2. BANNER DE EXECUCAO E FEEDBACK
     # ----------------------------------------------------------------------
     echo "    ======================================================================"
-    echo "                 >> ETAPA 5/9: ADESAO AO DOMINIO"
+    echo "                 >> ETAPA 5/10: ADESAO AO DOMINIO"
     echo "    ----------------------------------------------------------------------"
     echo "                    Ingressando o servidor no dominio: $AD_DOMAIN"
     echo "    ======================================================================"
@@ -591,18 +593,19 @@ EOF
     fi
 
     unset SENHA_LOCAL
-    sleep 2
+    
     mod_next
 }
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 6: CONFIGURACAO DO SSSD
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# MÓDULO 6: CONFIGURACAO DO SSSD  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod6_sssdoptimal() {
     clear
     echo "======================================================================"
-    echo "         >> ETAPA 6/9: OTIMIZACAO SSSD E TUNING DE CACHE"
+    echo "         >> ETAPA 6/10: OTIMIZACAO SSSD E TUNING DE CACHE"
     echo "----------------------------------------------------------------------"
     echo "           Refinando atributos e otimizando o cache local"
     echo "======================================================================"
@@ -634,15 +637,14 @@ mod6_sssdoptimal() {
 
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 7: CONFIGURACAO DO PAM (CRIACAO AUTOMATICA DE HOME)
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# MÓDULO 7: CONFIGURACAO DO PAM (CRIACAO AUTOMATICA DE HOME)  %%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod7_pam_homedir() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "           >> ETAPA 7/9: CONFIGURACAO DO PAM (CRIACAO DE HOME)"
+    echo "           >> ETAPA 7/10: CONFIGURACAO DO PAM (CRIACAO DE HOME)"
     echo "    ----------------------------------------------------------------------"
     echo "         Configurando criacao automatica de diretorios home"
     echo "    ======================================================================"
@@ -660,15 +662,16 @@ mod7_pam_homedir() {
     mod_next
 }
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 8: CONFIGURACAO DO SUDO PARA O GRUPO DO AD
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# MÓDULO 8: CONFIGURACAO DO SUDO PARA O GRUPO DO AD  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod8_adsudo() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "               >> ETAPA 8/9: CONFIGURACAO DO SUDO"
+    echo "               >> ETAPA 8/10: CONFIGURACAO DO SUDO"
     echo "    ----------------------------------------------------------------------"
     echo "         Concedendo acesso sudo ao grupo: $AD_GROUP"
     echo "    ======================================================================"
@@ -689,15 +692,130 @@ mod8_adsudo() {
     mod_next
 }
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 9: CHECKLIST FINAL DE VERIFICACAO
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-mod9_checklist() {
+
+# MODULO 9: Atualizacao Informacoes do Sistema Operaciona no Objeto do AD.  %%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+mod9_atualizar_info_so_ad() {
+    
+	# --------------------------------------------------------------------------
+    # FUNCAO   : atualizar_info_so_ad
+    # OBJETIVO : Capturar dados locais do SO e atualizar os atributos correspondentes
+    #            (operatingSystem, operatingSystemVersion, operatingSystemServicePack)
+    #            no objeto Computador dentro do Active Directory.
+    # RETORNO  : 0 se atualizado com sucesso, 1 em caso de falha crtica.
+    # --------------------------------------------------------------------------
+    
+    echo "================================================================================"
+    echo "       INICIANDO ATUALIZACAO DE ATRIBUTOS DO SISTEMA OPERACIONAL NO AD"
+    echo "================================================================================"
+    echo ""
+
+    # --- [0] COLETA E TRATAMENTO DE DADOS LOCAIS ---
+    local HOSTNAME_SHORT
+    local COMPUTER_NAME
+    local OS_NAME
+    local OS_VERSION
+    local OS_SP
+    local COMPUTER_DN
+
+    HOSTNAME_SHORT=$(hostname -s)
+    COMPUTER_NAME=$(echo "$HOSTNAME_SHORT" | tr '[:lower:]' '[:upper:]')
+
+    # Extracao segura dos dados do os-release e uname (sem aspas/simbolos)
+    OS_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+    OS_VERSION=$(grep '^VERSION=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+    OS_SP=$(uname -r)
+
+    echo "    [*] Dados locais coletados:"
+    echo "        -> Computador: $COMPUTER_NAME"
+    echo "        -> Sistema Operacional: $OS_NAME"
+    echo "        -> Versao do SO: $OS_VERSION"
+    echo "        -> Kernel (Service Pack): $OS_SP"
+    echo ""
+
+    # --- [1] BUSCA DO DISTINGUISHED NAME (DN) NO AD ---
+    echo "    [*] Localizando objeto computador no Active Directory..."
+    
+    # Utilizacao do -o ldif-wrap=no para evitar quebra de linha em DNs extensos
+    # e sed para garantir captura de caminhos com espacos em branco
+    COMPUTER_DN=$(ldapsearch -LLL -Y GSSAPI -o ldif-wrap=no \
+        -H "ldap://${AD_DC}" \
+        -b "${AD_BASE_DN}" \
+        "(sAMAccountName=${COMPUTER_NAME}\$)" dn 2>/dev/null | sed -n 's/^dn: //p')
+
+    if [ -z "${COMPUTER_DN}" ]; then
+        echo "    [X] ERRO: Objeto do computador [${COMPUTER_NAME}] nao foi localizado no AD."
+        echo "        Verifique se o hostname esta correto ou se a maquina ja foi desativada."
+        return 1
+    fi
+
+    echo "    [?] Objeto localizado com sucesso!"
+    echo "        DN: ${COMPUTER_DN}"
+    echo ""
+
+    # --- [2] CONFIRMACAO DO OPERADOR ---
+    local CONFIRM
+    echo "    ------------------------------------------------------------------------"
+    echo "    AVISO: Os atributos do objeto acima serao subscritos no Active Directory."
+    echo "    ------------------------------------------------------------------------"
+    read -erp "    Deseja prosseguir com a gravacao no AD? (s/n): " CONFIRM
+
+    if [[ ! "${CONFIRM}" =~ ^[sS]$ ]]; then
+        echo ""
+        echo "    [!] Operacao cancelada pelo usuario."
+        echo ""
+        return 0
+    fi
+
+    # --- [3] GRAVACAO DOS ATRIBUTOS VIA LDAPMODIFY ---
+    echo ""
+    echo "    [*] Enviando modificacoes via LDAP/GSSAPI..."
+
+# Here-Doc alinhado a esquerda para compatibilidade estrita do interpretador Bash
+ldapmodify -Y GSSAPI -H "ldap://${AD_DC}" <<EOF
+dn: ${COMPUTER_DN}
+changetype: modify
+replace: operatingSystem
+operatingSystem: ${OS_NAME}
+-
+replace: operatingSystemVersion
+operatingSystemVersion: ${OS_VERSION}
+-
+replace: operatingSystemServicePack
+operatingSystemServicePack: ${OS_SP}
+EOF
+
+    # Validacao do codigo de retorno do ldapmodify
+    if [ $? -eq 0 ]; then
+        echo ""
+        echo "    [?] SUCESSO: Atributos do SO atualizados com exito no Active Directory!"
+        echo "================================================================================"
+        echo ""
+        return 0
+    else
+        echo ""
+        echo "    [X] ERRO: Falha ao executar ldapmodify. Verifique as permissoes de escrita"
+        echo "        do seu ticket Kerberos sobre os atributos do objeto computador."
+        echo "================================================================================"
+        echo ""
+        return 1
+    fi
+	
+	mod_next
+}
+
+
+
+# MODULO 10: CHECKLIST FINAL DE VERIFICACAO  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+mod10_checklist() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                >> ETAPA 9/9: CHECKLIST FINAL"
+    echo "                >> ETAPA 10/10: CHECKLIST FINAL"
     echo "    ======================================================================"
     echo ""
     
@@ -710,38 +828,50 @@ mod9_checklist() {
     if systemctl is-active --quiet firewalld; then
         echo "    [1/10] firewalld ativo: [ OK! ]"
         ((OK++))
+        
+        # Verifica os servicos
+        if sudo firewall-cmd --query-service=ldap &>/dev/null; then
+            echo "    [2/10] Servico ldap: [ OK! ]"
+            ((OK++))
+        else
+            echo "    [2/10] Servico ldap: [X]"
+        fi
+
+        if sudo firewall-cmd --query-service=kerberos &>/dev/null; then
+            echo "    [3/10] Servico kerberos: [ OK! ]"
+            ((OK++))
+        else
+            echo "    [3/10] Servico kerberos: [X]"
+        fi
+        
+        # Verifica as portas
+        if sudo firewall-cmd --query-port=464/tcp &>/dev/null; then
+            echo "    [4/10] Porta 464/tcp: [ OK! ]"
+            ((OK++))
+        else
+            echo "    [4/10] Porta 464/tcp: [X]"
+        fi
+
+        if sudo firewall-cmd --query-port=3268/tcp &>/dev/null; then
+            echo "    [5/10] Porta 3268/tcp: [ OK! ]"
+            ((OK++))
+        else
+            echo "    [5/10] Porta 3268/tcp: [X]"
+        fi
     else
         echo "    [1/10] firewalld: [ OK! ] INATIVO"
-        ((OK++))  # Conta como OK pois firewall inativo nao bloqueia
-        TOTAL=$((TOTAL - 4))  # Ajusta total porque nao verificara as portas
-    fi
-    
-    # So verifica as portas se firewalld estiver ativo
-    if systemctl is-active --quiet firewalld; then
-        for svc in ldap kerberos; do
-            if sudo firewall-cmd --query-service="$svc" &>/dev/null; then
-                echo "    [2/10] Servico $svc: [ OK! ]"
-                ((OK++))
-            else
-                echo "    [2/10] Servico $svc: [X]"
-            fi
-        done
-        
-        for porta in 464/tcp 3268/tcp; do
-            if sudo firewall-cmd --query-port="$porta" &>/dev/null; then
-                echo "    [2/10] Porta $porta: [ OK! ]"
-                ((OK++))
-            else
-                echo "    [2/10] Porta $porta: [X]"
-            fi
-        done
+        echo "    [2/10] Servico ldap: [ OK! ] (Firewall Inativo)"
+        echo "    [3/10] Servico kerberos: [ OK! ] (Firewall Inativo)"
+        echo "    [4/10] Porta 464/tcp: [ OK! ] (Firewall Inativo)"
+        echo "    [5/10] Porta 3268/tcp: [ OK! ] (Firewall Inativo)"
+        OK=$((OK + 5))
     fi
     
     echo ""
     echo "    [ VERIFICACOES DE INTEGRACAO COM AD ]"
     echo "    ----------------------------------------------------------------------"
     
-    # 1. Dominio
+    # 6. Dominio
     if realm list | grep -q "$AD_DOMAIN"; then
         echo "    [6/10] Unido ao dominio: [ OK! ]"
         ((OK++))
@@ -749,7 +879,7 @@ mod9_checklist() {
         echo "    [6/10] Unido ao dominio: [X]"
     fi
     
-    # 2. SSSD
+    # 7. SSSD
     if systemctl is-active --quiet sssd; then
         echo "    [7/10] Servico sssd: [ OK! ]"
         ((OK++))
@@ -757,7 +887,7 @@ mod9_checklist() {
         echo "    [7/10] Servico sssd: [X]"
     fi
     
-    # 3. Sudo
+    # 8. Sudo
     if [[ -f "/etc/sudoers.d/99_${AD_GROUP}" ]] && grep -q "%$AD_GROUP" "/etc/sudoers.d/99_${AD_GROUP}" 2>/dev/null; then
         echo "    [8/10] Regra sudo: [ OK! ]"
         ((OK++))
@@ -765,8 +895,7 @@ mod9_checklist() {
         echo "    [8/10] Regra sudo: [X]"
     fi
     
-    # 4. Usuario AD (CORRECAO CIRURGICA AQUI)
-    # Utilizamos AD_UPN que foi a variavel validada e exportada no Modulo 4
+    # 9. Usuario AD
     if id "$AD_UPN" &>/dev/null || getent passwd "$AD_UPN" &>/dev/null; then
         echo "    [9/10] Consulta usuario $AD_UPN: [ OK! ]"
         ((OK++))
@@ -774,8 +903,8 @@ mod9_checklist() {
         echo "    [9/10] Consulta usuario $AD_UPN: [X]"
     fi
     
-    # 5. PAM
-    if grep -q "pam_mkhomedir.so" /etc/pam.d/system-auth; then
+    # 10. PAM
+    if grep -q "pam_mkhomedir.so" /etc/pam.d/system-auth 2>/dev/null || grep -q "pam_mkhomedir.so" /etc/pam.d/common-session 2>/dev/null; then
         echo "    [10/10] pam_mkhomedir: [ OK! ]"
         ((OK++))
     else
@@ -794,30 +923,36 @@ mod9_checklist() {
         echo "    [*] Recomendacoes finais:"
         echo "        - Teste login: ssh $AD_UPN@localhost"
         echo "        - Teste sudo: sudo -l"
-        echo "        - No PowerShell do AD: Get-ADComputer $(hostname -s) -Properties *"
+        echo "        - No PowerShell do AD: Get-ADComputer \$(hostname -s) -Properties *"
     else
         echo ""
         echo "    [X] ALGUMAS VERIFICACOES FALHARAM."
         echo "    [*] Reveja os modulos anteriores ou verifique manualmente."
     fi
     
-    mod_next
+    # Se a funcao mod_next existir no script, ela sera chamada aqui
+    if declare -f mod_next &>/dev/null; then
+        mod_next
+    fi
+	
 }
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# FLUXO PRINCIPAL DO SCRIPT
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+# FLUXO PRINCIPAL DO SCRIPT  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 main() {
-    mod1_banner        || exit 1
-    mod2_install       || exit 1
-    mod3_firewall      
-    mod4_adinfo        || exit 1
-    mod5_adjoin        || exit 1
-    mod6_sssdoptimal   || exit 1
-    mod7_pam_homedir   || exit 1
-    mod8_adsudo        || exit 1
-    mod9_checklist     || exit 1
+    mod1_banner                          || exit 1
+    mod2_install                         || exit 1
+    mod3_firewall                        
+    mod4_adinfo                          || exit 1
+    mod5_adjoin                          || exit 1
+    mod6_sssdoptimal                     || exit 1
+    mod7_pam_homedir                     || exit 1
+    mod8_adsudo                          || exit 1
+    mod9_atualizar_info_so_ad            || exit 1
+    mod10_checklist                      || exit 1
     
     echo ""
     echo "    ======================================================================"
@@ -827,4 +962,4 @@ main() {
 }
 
 # Executa o script
-main
+main "$@"
