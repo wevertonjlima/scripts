@@ -521,7 +521,6 @@ mod4_adinfo() {
     mod_next
 }
 
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # MODULO 5: ADESAO AO DOMINIO (REALM JOIN)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -530,34 +529,8 @@ mod5_adjoin() {
     clear
     
     # ----------------------------------------------------------------------
-    # 1. IDENTIFICACAO SEMI-AUTOMATICA (RHEL-ALIKE)
+    # 1. IDENTIFICACAO SEMI-AUTOMATICA - REMOVIDA (DIRETRIZ DE PRIVACIDADE DE OS)
     # ----------------------------------------------------------------------
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        
-        # Mapeamento das 5 versoes similares
-        if [[ "$NAME" =~ "Oracle" ]]; then
-            OS_NAME_VAL="Oracle Linux"
-        elif [[ "$NAME" =~ "Rocky" ]]; then
-            OS_NAME_VAL="Rocky Linux"
-        elif [[ "$NAME" =~ "Alma" ]]; then
-            OS_NAME_VAL="AlmaLinux"
-        elif [[ "$NAME" =~ "CentOS" ]]; then
-            OS_NAME_VAL="CentOS Linux"
-        elif [[ "$NAME" =~ "Red Hat" ]]; then
-            OS_NAME_VAL="Red Hat Enterprise Linux"
-        else
-            OS_NAME_VAL="RedHat Clone Linux"
-        fi
-        
-        OS_VER_VAL="$VERSION_ID"
-        OS_PRETTY_VAL="$OS_NAME_VAL $OS_VER_VAL"
-    else
-        OS_NAME_VAL="RedHat Clone Linux"
-        OS_VER_VAL="Unknown"
-        OS_PRETTY_VAL="RedHat Clone Linux"
-    fi
-    KERNEL_VAL=$(uname -r)
 
     # ----------------------------------------------------------------------
     # 2. BANNER DE EXECUCAO E FEEDBACK
@@ -565,17 +538,15 @@ mod5_adjoin() {
     echo "    ======================================================================"
     echo "                 >> ETAPA 5/9: ADESAO AO DOMINIO"
     echo "    ----------------------------------------------------------------------"
-    echo "                   Ingressando o servidor no dominio: $AD_DOMAIN"
+    echo "                    Ingressando o servidor no dominio: $AD_DOMAIN"
     echo "    ======================================================================"
     echo ""
-    echo "    [*] Configurando metadados do SO em /etc/realmd.conf..."
+    echo "    [*] Configurando padroes do client em /etc/realmd.conf..."
     
-    # Gera o arquivo que o realm join consultará
+    # Gera o arquivo omitindo os campos os-name e os-version
     sudo tee /etc/realmd.conf > /dev/null <<EOF
 [active-directory]
 default-client = sssd
-os-name = $OS_NAME_VAL
-os-version = $OS_VER_VAL
 
 [$AD_DOMAIN]
 automatic-id-mapping = yes
@@ -584,12 +555,8 @@ fully-qualified-names = no
 EOF
 
     echo ""
-    echo "    [*] Atributos salvos para o objeto do AD:"
-    echo "     - OperatingSystem ..............: $OS_PRETTY_VAL"
-    echo "     - OperatingSystemVersion .......: $OS_VER_VAL" 
-    echo "     - OperatingSystemServicePack ...: $KERNEL_VAL"
-    echo ""
     echo "    ----------------------------------------------------------------------"
+
 
     # ----------------------------------------------------------------------
     # 3. AUTENTICACAO E JOIN
@@ -629,13 +596,13 @@ EOF
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 6: CONFIGURACAO DO SSSD E ATUALIZACAO DO SERVICE PACK
+# MÓDULO 6: CONFIGURACAO DO SSSD
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod6_sssdoptimal() {
     clear
     echo "======================================================================"
-    echo "         >> ETAPA 6/9: OTIMIZACAO SSSD E KERNEL (SERVICE PACK)"
+    echo "         >> ETAPA 6/9: OTIMIZACAO SSSD E TUNING DE CACHE"
     echo "----------------------------------------------------------------------"
     echo "           Refinando atributos e otimizando o cache local"
     echo "======================================================================"
@@ -655,40 +622,11 @@ mod6_sssdoptimal() {
     sudo systemctl start sssd
     echo "[ OK! ] SSSD otimizado e reiniciado."
 
-    # 2. INJECAO DO KERNEL NO SERVICE PACK (VIA KERBEROS)
-    # Como o Modulo 5 ja criou o objeto, aqui apenas fazemos o "update" do campo vazio
-    echo ""
-    echo "[*] Atualizando campo 'Service Pack' com versao do Kernel..."
-    
-    local HOST_UPPER=$(hostname -s | tr '[:lower:]' '[:upper:]')
-    local KERNEL_VAL=$(uname -r)
-    
-    # Define o DN (Caminho) do objeto no AD
-    local COMPUTER_DN="CN=${HOST_UPPER},CN=Computers,${AD_BASE_DN}"
-    [[ -n "$OU_DN_FINAL" && "$OU_DN_FINAL" != *"CN=Computers"* ]] && COMPUTER_DN="CN=${HOST_UPPER},${OU_DN_FINAL}"
-
-    # Gera o LDIF apenas para o Service Pack (o resto o Mod 5 ja preencheu)
-    local LDIF_SP="/tmp/update_sp.ldif"
-    cat <<EOF > "$LDIF_SP"
-dn: $COMPUTER_DN
-changetype: modify
-replace: operatingSystemServicePack
-operatingSystemServicePack: $KERNEL_VAL
-EOF
-
-    # Usa o ticket Kerberos ativo (-Y GSSAPI) para gravar a informacao
-    if ldapmodify -Y GSSAPI -H "ldap://$AD_DC" -f "$LDIF_SP" &>/dev/null; then
-        echo "[ OK! ] Kernel $KERNEL_VAL injetado no Service Pack."
-    else
-        echo "[AVISO] Nao foi possivel atualizar o Service Pack agora."
-        echo "        O SSSD tentara sincronizar este atributo em background."
-    fi
-
-    rm -f "$LDIF_SP"
+    # 2. ATUALIZACAO DE ATRIBUTOS DE OS - REMOVIDO (DIRETRIZ DE PRIVACIDADE DE OS)
     
     echo ""
     echo "----------------------------------------------------------------------"
-    echo "[ OK! ] Etapa 6 concluida. Verifique o ADUC agora!"
+    echo "[ OK! ] Etapa 6 concluida. SSSD configurado com sucesso!"
     echo "----------------------------------------------------------------------"
     
     mod_next
