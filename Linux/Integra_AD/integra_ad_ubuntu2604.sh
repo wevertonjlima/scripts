@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+
 # ==============================================================================
-# Script: integra_ad_ubuntu2604.sh
+# Script: integra_ad_ubuntu.sh
 # Funcao: Integracao Ubuntu Server (24.04/26.04) com Active Directory
 #
 # IMPORTANTE: Ao realizar qualquer alteracao na logica ou compatibilidade,
@@ -45,6 +46,211 @@ fi
 mod_next() {
     printf "\n\n    >>> Prosseguindo...\n\n"
     sleep 4
+}
+
+
+
+# MÓDULO 1: BANNER E BOAS-VINDAS (COM AJUSTE DE FQDN IDEMPOTENTE) %%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+mod1_banner() {
+    clear
+    echo ""
+    echo "    ======================================================================"
+    echo "              INTEGRACAO UBUNTU SERVER COM ACTIVE DIRECTORY"
+    echo "    ----------------------------------------------------------------------"
+    echo "                     >> Versao: ${SCRIPT_VERSION} <<"
+    echo "                     >> ETAPA 1/10: Bem-Vindo!"
+    echo "    ======================================================================"
+    echo ""
+    echo "        OBJETIVO:"
+    echo "        - Configurar este servidor Ubuntu para se unir a um dominio"
+    echo "          Active Directory, permitindo login de usuarios."
+    echo ""
+    echo "        CARACTERISTICAS:"
+    echo "        - Controle de login local/ssh através de Grupo de Seguranca do AD"
+    echo "        - Permissao de root através de Grupo de Seguranca do AD"
+    echo "        - Cache de credenciais permitindo login offline"
+    echo "        - Envio automatico das informacoes do SO (OS, Kernel) para o AD"
+    echo ""
+    echo "        IMPORTANTE!"
+    echo "        - Tenha em maos as seguintes informacoes sobre o Active Directory:"
+    echo "        ------------------------------------------------------------------"
+    echo "        * Nome do Dominio DNS do AD"
+    echo "        * Conta UPN e senha do usuario que ira integrar ao AD"
+    echo "        * Nome do Grupo do AD que administrara este servidor"
+    echo "        * (Opcional) OU onde o computador sera registrado"
+    echo ""
+    echo "    ======================================================================"
+    echo ""
+    
+    while true; do
+        read -erp "    Deseja prosseguir com a instalacao e configuracao? (s/n): " PROSSEGUIR
+        PROSSEGUIR=$(echo "$PROSSEGUIR" | tr '[:upper:]' '[:lower:]')
+        if [[ "$PROSSEGUIR" == "s" ]]; then
+            echo ""
+            echo "    Iniciando as configuracoes..."
+            sleep 1
+            break
+        elif [[ "$PROSSEGUIR" == "n" ]]; then
+            echo ""
+            echo "    Operacao abortada pelo usuario. Saindo..."
+            exit 0
+        else
+            echo "    Resposta invalida. Digite 's' para sim ou 'n' para nao."
+        fi
+    done
+
+    # ----------------------------------------------------------------------
+    # SECAO: VERIFICACAO E AJUSTE DE HOSTNAME E REDE (OTIMIZADO UBUNTU/NETPLAN)
+    # ----------------------------------------------------------------------
+    while true; do
+        clear
+        
+        # Coleta dinamica do Hostname e isolamento do nome curto
+        local CURRENT_HOSTNAME=$(hostname)
+        local SHORT_HOSTNAME=$(echo "$CURRENT_HOSTNAME" | cut -d'.' -f1)
+        
+        # Identificacao da interface ativa de rota padrao
+        local INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+        [ -z "$INTERFACE" ] && INTERFACE=$(ip -4 addr show up | grep -v '127.0.0.1' | awk '/inet / {print $NF}' | head -n1)
+        
+        local IP_ADD=$(ip -4 addr show dev "$INTERFACE" | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)
+        local NETMASK_CIDR=$(ip -4 addr show dev "$INTERFACE" | awk '/inet / {print $2}' | cut -d/ -f2 | head -n1)
+        local GATEWAY=$(ip route | grep default | awk '{print $3}' | head -n1)
+        
+        # DNS obtido via systemd-resolved (padrao Ubuntu) focado no escopo do Netplan
+        local DNS_SERVER=$(resolvectl dns "$INTERFACE" 2>/dev/null | awk '{print $4}' | head -n1)
+        [ -z "$DNS_SERVER" ] && DNS_SERVER=$(awk '/nameserver/ {print $2}' /etc/resolv.conf | head -n1)
+        
+        # Identificacao de DHCP / Estatico baseada nos arquivos YAML do Netplan
+        local DHCP_SERVER="Nenhum (IP Estatico)"
+        if grep -rqi "dhcp4:.*true" /etc/netplan/; then
+            DHCP_SERVER="Ativo (IP via DHCP)"
+        fi
+        
+        # Traducao amigavel da mascara CIDR
+        local MASK_LEGIVEL=""
+        case "$NETMASK_CIDR" in
+            24) MASK_LEGIVEL="255.255.255.0 (/$NETMASK_CIDR)" ;;
+            16) MASK_LEGIVEL="255.255.0.0 (/$NETMASK_CIDR)" ;;
+            8)  MASK_LEGIVEL="255.0.0.0 (/$NETMASK_CIDR)" ;;
+            *)  MASK_LEGIVEL="Cidr /$NETMASK_CIDR" ;;
+        esac
+
+        # --- BANNER-LOOP ---
+        echo "    ======================================================================"
+        echo "                        >> Versao: ${SCRIPT_VERSION} <<"
+        echo "                        >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
+        echo "    ======================================================================"
+        echo "                    - Hostname ...: $SHORT_HOSTNAME"
+        echo "                    "
+        echo "                    - IP Add .....: $IP_ADD"
+        echo "                    - Mascara ....: $MASK_LEGIVEL"
+        echo "                    - Gateway ....: $GATEWAY"
+        echo "                    - DNS ........: $DNS_SERVER"
+        echo "                    "
+        echo "                    - DHCP SERVER.: $DHCP_SERVER"
+        echo "    ----------------------------------------------------------------------"
+
+        # --- LOGICA DE VALIDACAO USANDO O NOME CURTO ---
+        if [ "$SHORT_HOSTNAME" != "localhost" ] && [ -n "$SHORT_HOSTNAME" ]; then
+            read -erp "    Deseja prosseguir ? (s/n): " CONF_PROSSEGUIR
+            CONF_PROSSEGUIR=$(echo "$CONF_PROSSEGUIR" | tr '[:upper:]' '[:lower:]')
+            if [[ "$CONF_PROSSEGUIR" == "s" ]]; then
+                
+                # Variavel AD_DOMAIN tratada de forma segura
+                local DOMAIN_LOWER=$(echo "${AD_DOMAIN:-dominio.local}" | tr '[:upper:]' '[:lower:]')
+                local CLEAN_NAME="$SHORT_HOSTNAME"
+                local FINAL_FQDN="${CLEAN_NAME}.${DOMAIN_LOWER}"
+                
+                echo "    [*] Ajustando FQDN para idempotencia: $FINAL_FQDN"
+                sudo hostnamectl set-hostname "$FINAL_FQDN"
+                
+                # Garante que o /etc/hosts tem a entrada correta
+                if ! grep -q "$FINAL_FQDN" /etc/hosts; then
+                    echo "127.0.0.1   $FINAL_FQDN $CLEAN_NAME" | sudo tee -a /etc/hosts > /dev/null
+                fi
+                break
+            else
+                echo ""
+                echo "    Operacao abortada pelo usuario. Saindo..."
+                exit 0
+            fi
+        else
+            # Erro: Hostname eh localhost ou derivado
+            echo "    ERROR !!!"
+            echo "    O nome do computador nao pode ser ingressado como localhost."
+            echo ""
+            read -erp "    Deseja ALTERAR o hostname ? (s/n): " ALTERAR
+            ALTERAR=$(echo "$ALTERAR" | tr '[:upper:]' '[:lower:]')
+            
+            if [[ "$ALTERAR" != "s" ]]; then
+                echo ""
+                echo "    O script nao pode continuar com hostname invalido. Saindo..."
+                exit 1
+            fi
+            
+            # --- LOOP-HOSTNAME ---
+            while true; do
+                clear
+                echo "    ======================================================================"
+                echo "                        >> Versao: ${SCRIPT_VERSION} <<"
+                echo "                        >> ETAPA 1/10: CONFIRMACAO DO HOSTNAME"
+                echo "    ======================================================================"
+                echo ""
+                echo "    Informe o novo hostname, até 15 caracteres !"
+                echo "    (ex.: server-infra01)"
+                read -erp "    Digite: " NEW_HOSTNAME
+                
+                NEW_HOSTNAME=$(echo "$NEW_HOSTNAME" | cut -d'.' -f1)
+                
+                if [ ${#NEW_HOSTNAME} -gt 15 ]; then
+                    echo "    [X] Erro: O nome ultrapassa 15 caracteres padrao NetBIOS. Tente novamente."
+                    sleep 2
+                    continue
+                fi
+                
+                if [ -z "$NEW_HOSTNAME" ] || [[ "$NEW_HOSTNAME" == "localhost" ]]; then
+                    echo "    [X] Erro: Nome invalido ou in branco."
+                    sleep 2
+                    continue
+                fi
+                
+                echo ""
+                read -erp "    Confirma novo hostname: $NEW_HOSTNAME (s/n) ? " CONF_HOST
+                CONF_HOST=$(echo "$CONF_HOST" | tr '[:upper:]' '[:lower:]')
+                if [[ "$CONF_HOST" == "s" ]]; then
+                    break
+                fi
+            done
+            
+            # --- SOLICITACAO DO REBOOT ---
+            echo ""
+            echo "    Você está em uma janela de manutenção? Mudar o hostname causará um reboot."
+            read -erp "    Este computador sera reiniciado! Deseja prosseguir ? (s/n): " REBOOT_CONF
+            REBOOT_CONF=$(echo "$REBOOT_CONF" | tr '[:upper:]' '[:lower:]')
+            if [[ "$REBOOT_CONF" != "s" ]]; then
+                echo ""
+                echo "    Alteracao cancelada. Saindo..."
+                exit 0
+            fi
+            
+            local DOMAIN_LOWER=$(echo "${AD_DOMAIN:-dominio.local}" | tr '[:upper:]' '[:lower:]')
+            sudo hostnamectl set-hostname "${NEW_HOSTNAME}.${DOMAIN_LOWER}"
+            
+            clear
+            echo "    ======================================================================"
+            echo "    Apos o reboot, utilize novamente o script."
+            echo "    ======================================================================"
+            echo "    [*] Reiniciando o sistema em 5 segundos..."
+            sleep 5
+            sudo reboot
+            exit 0
+        fi
+    done
+    
+    mod_next
 }
 # end mod1
 
