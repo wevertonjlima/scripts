@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script: integra_ad_ubuntu.sh
+# Script: integra_ad_ubuntu2604.sh
 # Funcao: Integracao Ubuntu Server (24.04/26.04) com Active Directory
 #
 # IMPORTANTE: Ao realizar qualquer alteracao na logica ou compatibilidade,
