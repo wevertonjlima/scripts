@@ -3,9 +3,6 @@
 # ==============================================================================
 # Script: integra_ad_ubuntu2604.sh
 # Funcao: Integracao Ubuntu Server (24.04/26.04) com Active Directory
-# Coded by: Weverton Lima <wevertonjlima@gmail.com>
-#
-# Powered by: Gemini - Morgana, The Linux Witch SysAdmin.
 #
 # IMPORTANTE: Ao realizar qualquer alteracao na logica ou compatibilidade,
 # atualize a variavel SCRIPT_VERSION abaixo e a data do LOG de alteracoes.
@@ -93,7 +90,9 @@ AD_OU=""
 FINAL_FQDN=""
 SHORT_HOSTNAME=""
 OU_DN_FINAL=""      # Adicionada para sanar variantes de nomes de OUs
-
+AD_OS=""            # Adiconados para dar suporte a atualização de info do OS no objeto do AD.
+AD_VER=""           # Adiconados para dar suporte a atualização de info do OS no objeto do AD.
+AD_SP=""            # Adiconados para dar suporte a atualização de info do OS no objeto do AD.
 # end mod_intro
 
 
@@ -703,7 +702,6 @@ mod4_adinfo() {
 # end mod4
 
 
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # MODULO 5: ADESAO AO DOMINIO (REALM JOIN)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -723,7 +721,7 @@ mod5_adjoin() {
     echo "    [*] Configurando padroes do client em /etc/realmd.conf..."
     log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
 
-    # Gera o arquivo omitindo os campos os-name e os-version (Garante a privacidade do OS)
+    # Gera o arquivo padrao do realmd
     sudo tee /etc/realmd.conf > /dev/null <<EOF
 [active-directory]
 default-client = sssd
@@ -740,7 +738,6 @@ EOF
     # ----------------------------------------------------------------------
     # 2. AUTENTICACAO E JOIN
     # ----------------------------------------------------------------------
-    # Garante que temos o UPN para o prompt baseado nas globais
     if [ -z "$AD_UPN" ]; then
         AD_UPN="usr_joinad@${AD_DOMAIN^^}"
     fi
@@ -753,21 +750,82 @@ EOF
     echo "    [*] Executando Realm Join... (Aguarde a comunicacao com o DC)"
     log_event "INFO" "Disparando comando realm join para o dominio $AD_DOMAIN com o usuario $AD_UPN"
 
-    # Utiliza a variavel global AD_OU mapeada no topo do script para verificar o container
     if [ -n "$AD_OU" ]; then
         echo "$SENHA_LOCAL" | sudo realm join --user="$AD_UPN" --computer-ou="$AD_OU" "$AD_DOMAIN" 2>>"$LOG_FILE"
     else
         echo "$SENHA_LOCAL" | sudo realm join --user="$AD_UPN" "$AD_DOMAIN" 2>>"$LOG_FILE"
     fi
 
+# ----------------------------------------------------------------------
+    # 3. VALIDACAO DO JOIN E ATUALIZACAO DO INVENTARIO (LOGICA OS-UPDATE)
+    # ----------------------------------------------------------------------
     if [ $? -eq 0 ]; then
         echo "    [v] Servidor ingressado com sucesso!"
         log_event "INFO" "Adesao ao realm executada com sucesso absoluto."
         
-        # Aplica a permissao de grupo definida na coleta de dados
         sudo realm permit -g "$AD_GROUP" 2>>"$LOG_FILE"
         echo "    [v] Acesso liberado para o grupo: $AD_GROUP"
         log_event "INFO" "Permissao de login concedida ao grupo $AD_GROUP"
+
+        # --- REAPROVEITAMENTO DIRETO DO SEU SCRIPT OS-UPDATE.SH ---
+        echo ""
+        echo "    [*] Atualizando atributos de inventario do OS no Active Directory..."
+        sleep 5
+        log_event "INFO" "Iniciando atualizacao de atributos LDAP via GSSAPI."
+
+        # 1. Garante/Valida o Ticket Kerberos na sessão atual do usuário usando a senha em memória
+        if ! klist &>/dev/null; then
+            log_event "INFO" "Gerando ticket Kerberos local para $AD_UPN usando credencial em memoria."
+            kinit "$AD_UPN" 2>>"$LOG_FILE" <<< "$SENHA_LOCAL"
+        fi
+
+        # Mapeamento do OS-Release idêntico ao seu script original
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            AD_OS="$NAME"
+            AD_VER="$VERSION_ID"
+        else
+            AD_OS=$(uname -s)
+            AD_VER=$(uname -r)
+        fi
+        AD_SP="Kernel $(uname -r)"
+
+        # Ajuste do hostname em UPPERCASE exatamente como no seu os-update
+        local COMPUTER_NAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
+
+        # MONTAGEM DIRETA DO DN baseada no seu input de OU ou container padrão
+        local COMPUTER_DN=""
+        if [ -n "${AD_OU:-}" ]; then
+            COMPUTER_DN="CN=${COMPUTER_NAME},${AD_OU}"
+        else
+            COMPUTER_DN="CN=${COMPUTER_NAME},CN=Computers,${AD_BASE_DN}"
+        fi
+
+        log_event "INFO" "DN definido para atualizacao: $COMPUTER_DN. Enviando modificacoes..."
+        
+        # Executa o ldapmodify idêntico ao os-update.sh com o GSSAPI agora autenticado no contexto do usuário
+        ldapmodify -Y GSSAPI -H "ldap://$AD_DC" 2>>"$LOG_FILE" <<EOF
+dn: $COMPUTER_DN
+changetype: modify
+replace: operatingSystem
+operatingSystem: $AD_OS
+-
+replace: operatingSystemVersion
+operatingSystemVersion: $AD_VER
+-
+replace: operatingSystemServicePack
+operatingSystemServicePack: $AD_SP
+EOF
+
+        if [ $? -eq 0 ]; then
+            echo "    [v] Atributos do OS atualizados com sucesso no AD!"
+            log_event "INFO" "Atributos operatingSystem injetados via GSSAPI com sucesso."
+        else
+            echo "    [!] Aviso: Falha ao gravar os atributos no objeto do AD."
+            log_event "WARN" "ldapmodify retornou erro durante a gravacao."
+        fi
+        # --- FIM DO BLOCO ADAPTADO ---
+
     else
         echo ""
         echo "    [X] ERRO: Falha no ingresso ao dominio."
@@ -780,7 +838,7 @@ EOF
     unset SENHA_LOCAL
     mod_next
 }
-
+# end mod 5
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
