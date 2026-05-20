@@ -3,6 +3,9 @@
 # ==============================================================================
 # Script: integra_ad_ubuntu2604.sh
 # Funcao: Integracao Ubuntu Server (24.04/26.04) com Active Directory
+# Coded by: Weverton Lima <wevertonjlima@gmail.com>
+#
+# Powered by: Gemini - Morgana, The Linux Witch SysAdmin.
 #
 # IMPORTANTE: Ao realizar qualquer alteracao na logica ou compatibilidade,
 # atualize a variavel SCRIPT_VERSION abaixo e a data do LOG de alteracoes.
