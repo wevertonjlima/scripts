@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Script: integra_ad_ubuntu2604.sh
-# Funcao: Integracao Ubuntu Server (24.04/26.04) com Active Directory
-#
-# IMPORTANTE: Ao realizar qualquer alteracao na logica ou compatibilidade,
-# atualize a variavel SCRIPT_VERSION abaixo e a data do LOG de alteracoes.
-# O versionamento semantico deve seguir a progressao decimal (1.0.x para
-# correcoes/ajustes e 1.x.0 para novas funcionalidades).
+# Script ....: integra_ubuntu.sh
+# Funcao ....: Integracao Ubuntu Server com Active Directory
+# Created ...: Weverton Lima <wevertonjlima@gmail.com>
+# Powered By : Gemini Agent, Morgana Linux Witch. 
 #
 # DESCRICAO:
 #   Script para integrar Ubuntu Server ao Active Directory,
@@ -18,13 +15,14 @@
 #   - Acesso root/sudo
 #   - Conectividade com os DCs do AD (portas 389, 88, 464, 3268)
 #   - Conta AD com permissao para unir computadores ao dominio
+#   - Grupo AD que será indicado como SUDO neste sistema.
 #
-# Versao Inicial: 1.0.0 (Baseada na versao 1.2.0 Oracle Linux)
-# Data: 2026-05-19
+# Data: 2026-05-21
 #
 # Ultimos ajustes:
 # - inserção de LOG
 # - ajuste de visualização de solicitações de confirmações interativas (S ou N)?
+# - ajuste no MOD 5, para inclusão de kernel no objeto do AD.
 #
 # ==============================================================================
 
@@ -32,7 +30,7 @@
 set -euo pipefail
 
 # --- [1] METADADOS E VERSAO ---
-SCRIPT_VERSION="1.0.1"
+SCRIPT_VERSION="1.3.0"
 
 # --- [2] INFRAESTRUTURA DE LOGS (FASE 1 - VERSAO RIGOROSA) ---
 LOG_DIR="$(dirname "$(readlink -f "$0")")"
@@ -89,10 +87,10 @@ AD_GROUP=""
 AD_OU=""
 FINAL_FQDN=""
 SHORT_HOSTNAME=""
-OU_DN_FINAL=""      # Adicionada para sanar variantes de nomes de OUs
-AD_OS=""            # Adiconados para dar suporte a atualização de info do OS no objeto do AD.
-AD_VER=""           # Adiconados para dar suporte a atualização de info do OS no objeto do AD.
-AD_SP=""            # Adiconados para dar suporte a atualização de info do OS no objeto do AD.
+OU_DN_FINAL="" 
+SYS_OS=""
+SYS_VER=""
+SYS_SP=""
 # end mod_intro
 
 
@@ -107,26 +105,26 @@ mod1_banner() {
     echo "    ======================================================================"
     echo "              INTEGRACAO UBUNTU SERVER COM ACTIVE DIRECTORY"
     echo "    ----------------------------------------------------------------------"
-    echo "                      >> Versao : ${SCRIPT_VERSION} "
-    echo "                      >> Etapa 1: Bem-Vindo! "
+    echo "                      Versao : ${SCRIPT_VERSION} "
+    echo "                      Etapa 1: Bem-Vindo! "
     echo "    ======================================================================"
     echo ""
     echo "        OBJETIVO:"
-    echo "        - Configurar este servidor Ubuntu para se unir a um dominio"
+    echo "        - Integrar este servidor linux para se unir a um dominio"
     echo "          Active Directory, permitindo login de usuarios."
     echo ""
     echo "        CARACTERISTICAS:"
     echo "        - Controle de login local/ssh através de Grupo de Seguranca do AD"
     echo "        - Permissao de root através de Grupo de Seguranca do AD"
     echo "        - Cache de credenciais permitindo login offline"
-    echo "        - Envio automatico das informacoes do SO (OS, Kernel) para o AD"
+    echo "        - Envio automatico das informacoes do SO (Nome, Versão e Kernel) para o AD"
     echo ""
     echo "        IMPORTANTE!"
     echo "        - Tenha em maos as seguintes informacoes sobre o Active Directory:"
     echo "        ------------------------------------------------------------------"
     echo "        * Nome do Dominio DNS do AD"
-    echo "        * Conta UPN e senha do usuario que ira integrar ao AD"
-    echo "        * Nome do Grupo do AD que administrara este servidor"
+    echo "        * Nome da Conta de Servico e Sennha do usuario que ira integrar ao AD"
+    echo "        * Nome do Grupo do AD que será Administrador deste servidor"
     echo "        * (Opcional) OU onde o computador sera registrado"
     echo ""
     echo "    ======================================================================"
@@ -197,11 +195,15 @@ mod1_banner() {
             *)  MASK_LEGIVEL="Cidr /$NETMASK_CIDR" ;;
         esac
 
+        echo ""
+		echo "    ======================================================================"
+		echo "                     Integra AD v: ${SCRIPT_VERSION} "
+		echo "    ----------------------------------------------------------------------"
+        echo "                        Etapa 1: Bem-Vindo!"
+		echo "                     Verificacao de Hostname e Rede"
         echo "    ======================================================================"
-        echo "                        >> Versao : ${SCRIPT_VERSION} "
-        echo "                        >> Etapa 1: Bem-Vindo!"
-        echo "    ======================================================================"
-        echo "                    - Hostname ...: $SHORT_HOSTNAME"
+		echo ""
+		echo "                    - Hostname ...: $SHORT_HOSTNAME"
         echo "                    "
         echo "                    - IP Add .....: $IP_ADD"
         echo "                    - Mascara ....: $MASK_LEGIVEL"
@@ -219,8 +221,8 @@ mod1_banner() {
                 local DOMAIN_LOWER=$(echo "$AD_DOMAIN" | tr '[:upper:]' '[:lower:]')
                 local CLEAN_NAME="$SHORT_HOSTNAME"
                 local FINAL_FQDN="${CLEAN_NAME}.${DOMAIN_LOWER}"
-                
-                echo "    [*] Ajustando FQDN para idempotencia: $FINAL_FQDN"
+
+                echo "    [  *  ] Ajustando FQDN para idempotencia: $FINAL_FQDN"
                 log_event "INFO" "Hostname valido ($SHORT_HOSTNAME). Aplicando FQDN: $FINAL_FQDN"
                 
                 sudo hostnamectl set-hostname "$FINAL_FQDN" 2>>"$LOG_FILE"
@@ -256,25 +258,24 @@ mod1_banner() {
             
             while true; do
                 clear
-                echo "    ======================================================================"
-                echo "                        >> Versao : ${SCRIPT_VERSION} "
-                echo "                        >> Etapa1: CONFIRMACAO DO HOSTNAME "
-                echo "    ======================================================================"
-                echo ""
-                echo "    Informe o novo hostname, até 15 caracteres !"
-                echo "    (ex.: server-infra01)"
+                echo      "    ======================================================================"
+                echo      "                        Etapa1: CONFIRMACAO DO HOSTNAME "
+                echo      "    ======================================================================"
+                echo      ""
+                echo      "    Informe o novo hostname, até 15 caracteres !"
+                echo      "    (ex.: server-infra01)"
                 read -erp "    Digite: " NEW_HOSTNAME
                 
                 NEW_HOSTNAME=$(echo "$NEW_HOSTNAME" | cut -d'.' -f1)
                 
                 if [ ${#NEW_HOSTNAME} -gt 15 ]; then
-                    echo "    [X] Erro: O nome ultrapassa 15 caracteres padrao NetBIOS. Tente novamente."
+                    echo "    [ERROR] O nome ultrapassa 15 caracteres padrao NetBIOS. Tente novamente."
                     sleep 2
                     continue
                 fi
                 
                 if [ -z "$NEW_HOSTNAME" ] || [[ "$NEW_HOSTNAME" == "localhost" ]]; then
-                    echo "    [X] Erro: Nome invalido ou em branco."
+                    echo "    [ERROR] Nome invalido ou em branco."
                     sleep 2
                     continue
                 fi
@@ -288,12 +289,12 @@ mod1_banner() {
             done
             
             echo ""
-            echo "    Você está em uma janela de manutenção? Mudar o hostname causará um reboot."
+            echo      "    Você está em uma janela de manutenção? Mudar o hostname causará um reboot."
             read -erp "    Este computador sera reiniciado! Deseja prosseguir ? (s/n): " REBOOT_CONF
             REBOOT_CONF="${REBOOT_CONF,,}"
             if [[ "$REBOOT_CONF" != "s" ]]; then
                 echo ""
-                echo "    Alteracao cancelada. Saindo..."
+                echo  "    Alteracao cancelada. Saindo..."
                 log_event "AVISO" "Alteracao de hostname cancelada pelo usuario."
                 exit 0
             fi
@@ -305,9 +306,9 @@ mod1_banner() {
             
             clear
             echo "    ======================================================================"
-            echo "    Apos o reboot, utilize novamente o script."
+            echo "        Apos o reboot, utilize novamente o script."
             echo "    ======================================================================"
-            echo "    [*] Reiniciando o sistema em 5 segundos..."
+            echo "        [  *  ] Reiniciando o sistema em 5 segundos..."
             sleep 5
             sudo reboot
             exit 0
@@ -332,17 +333,17 @@ mod2_install() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                        >> Versao : ${SCRIPT_VERSION} "
-    echo "                        >> Etapa 2: INSTALACAO DE PACOTES"
+    echo "                        Versao : ${SCRIPT_VERSION} "
+    echo "                        Etapa 2: INSTALACAO DE PACOTES"
     echo "    ----------------------------------------------------------------------"
     echo "                       Instalando dependencias para integracao com AD"
     echo "    ======================================================================"
     echo ""
     
     # Verifica conectividade com repositorios
-    echo "    [*] Verificando conectividade com repositorios APT..."
+    echo "    [  *  ] Verificando conectividade com repositorios APT..."
     if ! sudo apt update --print-uris &>/dev/null; then
-        echo "    [X] ERRO: Nao foi possivel acessar os repositorios APT."
+        echo "    [ERROR] Nao foi possivel acessar os repositorios APT."
         echo "    Verifique as configuracoes de Proxy ou Gateway de rede."
         sleep 4
         return 1
@@ -351,11 +352,11 @@ mod2_install() {
     
     # Atualiza lista de pacotes
     echo ""
-    echo "    [*] Atualizando lista de pacotes..."
+    echo "    [  *  ] Atualizando lista de pacotes..."
     sudo apt update -qq
     
     # Verifica atualizacoes pendentes
-    echo "    [*] Verificando atualizacoes pendentes..."
+    echo "    [  *  ] Verificando atualizacoes pendentes..."
     local updates=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" || true)
     
     if [ "$updates" -gt 0 ]; then
@@ -392,7 +393,7 @@ mod2_install() {
     )
     
     echo ""
-    echo "    [*] Instalando pacotes: ${PACOTES[*]}"
+    echo "    [  *  ] Instalando pacotes: ${PACOTES[  *  ]}"
     echo "    ----------------------------------------------------------------------"
     echo "    AVISO: O processo pode demorar dependendo da velocidade da conexao."
     echo "    ----------------------------------------------------------------------"
@@ -404,13 +405,13 @@ mod2_install() {
         echo "    [ OK! ] Pacotes instalados com sucesso."
     else
         echo ""
-        echo "    [X] ERRO: Falha na instalacao de pacotes."
+        echo "    [ERROR] Falha na instalacao de pacotes."
         return 1
     fi
     
     # Validacao final refinada
     echo ""
-    echo "    [*] Validando instalacao individual..."
+    echo "    [  *  ] Validando instalacao individual..."
     local OK=true
     for pkg in "${PACOTES[@]}"; do
         # dpkg-query eh mais rapido e preciso que grep no dpkg -l
@@ -430,7 +431,7 @@ mod2_install() {
     
     # Preparacao final do ambiente
     echo ""
-    echo "    [*] Ajustando servicos para configuracao..."
+    echo "    [  *  ] Ajustando servicos para configuracao..."
     sudo systemctl stop sssd &>/dev/null
     sudo systemctl enable --now chrony &>/dev/null
     
@@ -450,15 +451,15 @@ mod3_firewall() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                        >> Versao : ${SCRIPT_VERSION} "
-    echo "                        >> Etapa 3: CONFIGURACAO DO FIREWALL"
+    echo "                        Versao : ${SCRIPT_VERSION} "
+    echo "                        Etapa 3: CONFIGURACAO DO FIREWALL"
     echo "    ----------------------------------------------------------------------"
     echo "             Liberando portas necessarias para comunicacao com o AD"
     echo "    ======================================================================"
     echo ""
 
     # Verifica o estado atual do UFW de forma limpa
-    echo "    [*] Verificando estado atual do UFW..."
+    echo "    [  *  ] Verificando estado atual do UFW..."
     if ! sudo ufw status | grep -q "Status: active"; then
         echo "    [ OK! ] O Firewall (UFW) esta DESATIVADO neste servidor."
         echo "        Nenhuma regra sera aplicada para respeitar a diretriz do sistema."
@@ -494,7 +495,7 @@ mod3_firewall() {
         local porta="${regra%%/*}"
         local proto="${regra##*/}"
         
-        echo "    [*] Liberando conexao de entrada para: $porta/$proto..."
+        echo "    [  *  ] Liberando conexao de entrada para: $porta/$proto..."
         sudo ufw allow "$porta/$proto" comment 'Active Directory Integration' &>/dev/null
     done
 
@@ -503,7 +504,7 @@ mod3_firewall() {
     
     # Exibe o status atual resumido apenas para auditoria visual do administrador
     echo ""
-    echo "    [*] Resumo atual do Firewall (UFW):"
+    echo "    [  *  ] Resumo atual do Firewall (UFW):"
     sudo ufw status numbered | grep 'Active Directory Integration' || true
     
     echo ""
@@ -522,8 +523,8 @@ mod3_firewall() {
 mod4_adinfo() {
     clear
     echo "======================================================================"
-    echo "                      >> Versao : ${SCRIPT_VERSION} "
-    echo "                      >> Etapa 4: COLETA E VALIDACAO DOS DADOS DO AD <<"
+    echo "                      Versao : ${SCRIPT_VERSION} "
+    echo "                      Etapa 4: COLETA E VALIDACAO DOS DADOS DO AD <<"
     echo "======================================================================"
     echo ""
 
@@ -542,7 +543,7 @@ mod4_adinfo() {
         AD_REALM=$(echo "$AD_DOMAIN" | tr '[:lower:]' '[:upper:]')
 
         echo ""
-        echo "[*] Verificando DNS e localizando DCs..."
+        echo "[  *  ] Verificando DNS e localizando DCs..."
 
         if dig +short "$AD_DOMAIN" 2>>"$LOG_FILE" | grep -q '.'; then
             AD_DC=$(dig +short "$AD_DOMAIN" 2>>"$LOG_FILE" | head -n1)
@@ -559,7 +560,7 @@ mod4_adinfo() {
         fi
         
         echo ""
-        echo "[X] Erro: Dominio nao resolvivel. Verifique o /etc/resolv.conf."
+        echo "[ERROR] Dominio nao resolvivel. Verifique o /etc/resolv.conf."
         log_event "AVISO" "Falha ao resolver o dominio DNS: $AD_DOMAIN"
         echo "----------------------------------------------------------------------"
         echo ""
@@ -575,7 +576,7 @@ mod4_adinfo() {
         read -erp "Digite: " AD_USER_ONLY
 
         if [ -z "$AD_USER_ONLY" ]; then
-            echo "[X] Erro: O usuario nao pode ser vazio."
+            echo "[ERROR] O usuario nao pode ser vazio."
             continue
         fi
 
@@ -587,7 +588,7 @@ mod4_adinfo() {
         echo ""
 
         echo ""
-        echo "[*] Validando credenciais via Kerberos..."
+        echo "[  *  ] Validando credenciais via Kerberos..."
 
         sudo kdestroy &>/dev/null || true
 
@@ -618,7 +619,7 @@ mod4_adinfo() {
         if [ -n "$AD_GROUP" ]; then
             break
         else
-            echo "[X] Erro: O nome do grupo nao pode ser vazio."
+            echo "[ERROR] O nome do grupo nao pode ser vazio."
         fi
     done
 
@@ -640,7 +641,7 @@ mod4_adinfo() {
                 echo "[ OK! ] Container customizado definido."
                 break
             else
-                echo "[X] Erro: O caminho da OU nao pode ser vazio se selecionou 's'."
+                echo "[ERROR] O caminho da OU nao pode ser vazio se selecionou 's'."
             fi
         elif [[ "$HAS_OU" == "n" ]]; then
             AD_OU="" 
@@ -683,7 +684,7 @@ mod4_adinfo() {
 
     # --- [6] Aplicacao Definitiva do Hostname FQDN ---
     echo ""
-    echo "[*] Aplicando Hostname FQDN: $FINAL_FQDN"
+    echo "[  *  ] Aplicando Hostname FQDN: $FINAL_FQDN"
     log_event "INFO" "Aplicando FQDN definitivo pos-validacao: $FINAL_FQDN"
     sudo hostnamectl set-hostname "$FINAL_FQDN" 2>>"$LOG_FILE"
 
@@ -710,21 +711,48 @@ mod5_adjoin() {
     clear
 
     # ----------------------------------------------------------------------
-    # 1. BANNER DE EXECUCAO E FEEDBACK
+    # Bloco 0. BANNER DE EXECUCAO E FEEDBACK
     # ----------------------------------------------------------------------
     echo "    ======================================================================"
-    echo "                     >> ETAPA 5: ADESAO AO DOMINIO <<"
+    echo "                     Etapa 5: ADESAO AO DOMINIO <<"
     echo "    ----------------------------------------------------------------------"
     echo "                        Ingressando o servidor no dominio: $AD_DOMAIN"
     echo "    ======================================================================"
     echo ""
-    echo "    [*] Configurando padroes do client em /etc/realmd.conf..."
+    echo "    [  *  ] Configurando padroes do client em /etc/realmd.conf..."
     log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
-
-    # Gera o arquivo padrao do realmd
-    sudo tee /etc/realmd.conf > /dev/null <<EOF
-[active-directory]
+	echo ""
+    echo "    -----------------------------------------------------------------------"
+	
+  
+    # --- COLETA UNIFICADA DE METADADOS (Sem retrabalho) ---
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        # Padronizando com as strings amigaveis que funcionaram no seu print do AD
+        readonly SYS_OS="$PRETTY_NAME"
+        readonly SYS_VER="$VERSION"
+    else
+        readonly SYS_OS=$(uname -s)
+        readonly SYS_VER=$(uname -r)
+    fi
+    readonly SYS_SP="Kernel $(uname -r)"
+	
+	
+	
+	# ------------------------------------------------------------------------------------------
+    # Bloco 1. Geração do arquivo /etc/realmd.conf
+    # ------------------------------------------------------------------------------------------
+	
+	# Criacao dinamica do "realmd.conf" baseado nas info do /etc/os-release .
+    echo "    [  *  ] Gerando arquivo /etc/realmd.conf com dados do sistema operacional..."
+	
+	if ! sudo tee /etc/realmd.conf > /dev/null <<EOF
+[config]
 default-client = sssd
+
+[active-directory]
+os-name = ${SYS_OS}
+os-version = ${SYS_VER}
 
 [$AD_DOMAIN]
 automatic-id-mapping = yes
@@ -732,11 +760,17 @@ user-principal = yes
 fully-qualified-names = no
 EOF
 
-    echo ""
-    echo "    ----------------------------------------------------------------------"
+	then
+        echo "    [ERROR] Falha ao criar o arquivo /etc/realmd.conf."
+        return 1
+    else
+        echo "    [!] Arquivo /etc/realmd.conf criado com sucesso!"
+    fi
+
+    sleep 1
 
     # ----------------------------------------------------------------------
-    # 2. AUTENTICACAO E JOIN
+    # Bloco 2. AUTENTICACAO E JOIN
     # ----------------------------------------------------------------------
     if [ -z "$AD_UPN" ]; then
         AD_UPN="usr_joinad@${AD_DOMAIN^^}"
@@ -747,7 +781,7 @@ EOF
     echo ""
 
     echo ""
-    echo "    [*] Executando Realm Join... (Aguarde a comunicacao com o DC)"
+    echo "    [  *  ] Executando Realm Join... (Aguarde a comunicacao com o DC)"
     log_event "INFO" "Disparando comando realm join para o dominio $AD_DOMAIN com o usuario $AD_UPN"
 
     if [ -n "$AD_OU" ]; then
@@ -756,9 +790,11 @@ EOF
         echo "$SENHA_LOCAL" | sudo realm join --user="$AD_UPN" "$AD_DOMAIN" 2>>"$LOG_FILE"
     fi
 
-# ----------------------------------------------------------------------
-    # 3. VALIDACAO DO JOIN E ATUALIZACAO DO INVENTARIO (LOGICA OS-UPDATE)
-    # ----------------------------------------------------------------------
+
+    # -----------------------------------------------------------------------------------
+	# Bloco 3. Validacao Do Join E Atualizacao Do Atributos de Sistema Operacional
+    #	       no Objeto Computador No Active Directory.                 
+    # -----------------------------------------------------------------------------------
     if [ $? -eq 0 ]; then
         echo "    [v] Servidor ingressado com sucesso!"
         log_event "INFO" "Adesao ao realm executada com sucesso absoluto."
@@ -767,33 +803,22 @@ EOF
         echo "    [v] Acesso liberado para o grupo: $AD_GROUP"
         log_event "INFO" "Permissao de login concedida ao grupo $AD_GROUP"
 
-        # --- REAPROVEITAMENTO DIRETO DO SEU SCRIPT OS-UPDATE.SH ---
+        # Reaproveitamento do script OS-UPDATE.SH .
         echo ""
-        echo "    [*] Atualizando atributos de inventario do OS no Active Directory..."
+        echo "    [  *  ] Atualizando atributos de inventario do OS no Active Directory..."
         sleep 5
         log_event "INFO" "Iniciando atualizacao de atributos LDAP via GSSAPI."
 
-        # 1. Garante/Valida o Ticket Kerberos na sessão atual do usuário usando a senha em memória
+        # Garante/Valida o Ticket Kerberos na sessão atual do usuário usando a senha em memória.
         if ! klist &>/dev/null; then
             log_event "INFO" "Gerando ticket Kerberos local para $AD_UPN usando credencial em memoria."
             kinit "$AD_UPN" 2>>"$LOG_FILE" <<< "$SENHA_LOCAL"
         fi
 
-        # Mapeamento do OS-Release idêntico ao seu script original
-        if [ -f /etc/os-release ]; then
-            . /etc/os-release
-            AD_OS="$NAME"
-            AD_VER="$VERSION_ID"
-        else
-            AD_OS=$(uname -s)
-            AD_VER=$(uname -r)
-        fi
-        AD_SP="Kernel $(uname -r)"
-
-        # Ajuste do hostname em UPPERCASE exatamente como no seu os-update
+        # Ajuste do hostname em UPPERCASE exatamente como no seu os-update.
         local COMPUTER_NAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
 
-        # MONTAGEM DIRETA DO DN baseada no seu input de OU ou container padrão
+        # Montagem direta do DN baseada no input de OU questionado acima.
         local COMPUTER_DN=""
         if [ -n "${AD_OU:-}" ]; then
             COMPUTER_DN="CN=${COMPUTER_NAME},${AD_OU}"
@@ -808,13 +833,13 @@ EOF
 dn: $COMPUTER_DN
 changetype: modify
 replace: operatingSystem
-operatingSystem: $AD_OS
+operatingSystem: $SYS_OS
 -
 replace: operatingSystemVersion
-operatingSystemVersion: $AD_VER
+operatingSystemVersion: $SYS_VER
 -
 replace: operatingSystemServicePack
-operatingSystemServicePack: $AD_SP
+operatingSystemServicePack: $SYS_SP
 EOF
 
         if [ $? -eq 0 ]; then
@@ -824,16 +849,16 @@ EOF
             echo "    [!] Aviso: Falha ao gravar os atributos no objeto do AD."
             log_event "WARN" "ldapmodify retornou erro durante a gravacao."
         fi
-        # --- FIM DO BLOCO ADAPTADO ---
-
+        
     else
         echo ""
-        echo "    [X] ERRO: Falha no ingresso ao dominio."
+        echo "    [ERROR] Falha no ingresso ao dominio."
         echo "    Dica: Verifique se o computador ja existe no AD ou se a senha expirou."
         log_event "ERRO" "O comando realm join retornou codigo de falha."
         unset SENHA_LOCAL
         return 1
     fi
+
 
     unset SENHA_LOCAL
     mod_next
@@ -849,8 +874,8 @@ mod6_sssdoptimal() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                        >> Versao : ${SCRIPT_VERSION} "
-    echo "                        >> Etapa 6: OTIMIZACAO DO SSSD <<"
+    echo "                        Versao : ${SCRIPT_VERSION} "
+    echo "                        Etapa 6: OTIMIZACAO DO SSSD <<"
     echo "    ======================================================================"
     echo "          Otimizando o arquivo sssd.conf para performance e cache"
     echo "    ======================================================================"
@@ -858,16 +883,16 @@ mod6_sssdoptimal() {
 
     local SSSD_CONF="/etc/sssd/sssd.conf"
 
-    echo "    [*] Verificando existencia do arquivo de configuracao..."
+    echo "    [  *  ] Verificando existencia do arquivo de configuracao..."
     if [ ! -f "$SSSD_CONF" ]; then
-        echo "    [X] ERRO: Arquivo $SSSD_CONF nao encontrado."
+        echo "    [ERROR] Arquivo $SSSD_CONF nao encontrado."
         echo "        Certifique-se de que o Modulo 5 (Join) foi executado com sucesso."
         log_event "ERRO" "Arquivo $SSSD_CONF ausente antes da otimizacao."
         sleep 4
         return 1
     fi
 
-    echo "    [*] Aplicando tuning e politicas de cache offline no SSSD..."
+    echo "    [  *  ] Aplicando tuning e politicas de cache offline no SSSD..."
     log_event "INFO" "Iniciando tuning de performance no arquivo $SSSD_CONF"
 
     # Garante permissao restrita de leitura/escrita antes de manipular (Exigencia do SSSD)
@@ -889,7 +914,7 @@ krb5_store_password_if_offline = true' "$SSSD_CONF" 2>>"$LOG_FILE"
     sudo chmod 600 "$SSSD_CONF" 2>>"$LOG_FILE"
 
     # --- SECAO: RESTART E REFRESH DO DAEMON ---
-    echo "    [*] Reiniciando o servico SSSD para aplicar as novas diretivas..."
+    echo "    [  *  ] Reiniciando o servico SSSD para aplicar as novas diretivas..."
     
     # Limpa caches residuais em disco para forçar leitura limpa do AD
     sudo sssd -i &>/dev/null || true
@@ -899,7 +924,7 @@ krb5_store_password_if_offline = true' "$SSSD_CONF" 2>>"$LOG_FILE"
         echo "    [ OK! ] Servico SSSD reiniciado e parametrizado com sucesso."
         log_event "INFO" "SSSD reiniciado com sucesso apos aplicacao do tuning."
     else
-        echo "    [X] ERRO: Falha ao reiniciar o SSSD apos a otimizacao."
+        echo "    [ERROR] Falha ao reiniciar o SSSD apos a otimizacao."
         log_event "ERRO" "Falha critica no restart do servico SSSD."
         return 1
     fi
@@ -921,8 +946,8 @@ mod7_pam_homedir() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                        >> Versao : ${SCRIPT_VERSION} "
-    echo "                        >> Etapa 7: CONFIGURACAO DO PAM <<"
+    echo "                        Versao : ${SCRIPT_VERSION} "
+    echo "                        Etapa 7: CONFIGURACAO DO PAM <<"
     echo "    ======================================================================"
     echo "          Configurando criacao automatica de Home para usuarios do AD"
     echo "    ======================================================================"
@@ -930,18 +955,18 @@ mod7_pam_homedir() {
 
     local PAM_FILE="/etc/pam.d/common-session"
 
-    echo "    [*] Verificando suporte a criacao de home no PAM..."
+    echo "    [  *  ] Verificando suporte a criacao de home no PAM..."
     
     # No Ubuntu, a diretiva correta deve residir no common-session para cobrir SSH e TTY
     if [ ! -f "$PAM_FILE" ]; then
-        echo "    [X] ERRO: Arquivo estrutural do PAM $PAM_FILE nao encontrado."
+        echo "    [ERROR] Arquivo estrutural do PAM $PAM_FILE nao encontrado."
         log_event "ERRO" "Arquivo estrutural $PAM_FILE nao existe no sistema."
         return 1
     fi
 
     # Aplica a injeção de forma idempotente (só adiciona se já não existir no arquivo)
     if ! grep -q "pam_mkhomedir.so" "$PAM_FILE"; then
-        echo "    [*] Injetando modulo pam_mkhomedir.so no fluxo de sessao..."
+        echo "    [  *  ] Injetando modulo pam_mkhomedir.so no fluxo de sessao..."
         log_event "INFO" "Injetando pam_mkhomedir.so em $PAM_FILE"
         
         # Insere a diretiva antes da última linha de fallback do PAM comum do Ubuntu
@@ -955,13 +980,13 @@ session required                        pam_mkhomedir.so skel=/etc/skel/ umask=0
 
     # Garante a consistência e permissões das pastas base /home
     # O umask=0077 garante que o home do usuário AD seja privado (permissão 700)
-    echo "    [*] Validando integridade dos arquivos de configuracao do PAM..."
+    echo "    [  *  ] Validando integridade dos arquivos de configuracao do PAM..."
     
     if grep -q "pam_mkhomedir.so" "$PAM_FILE"; then
         echo "    [ OK! ] Validacao do PAM concluida com sucesso."
         log_event "INFO" "Modulo PAM auditado e validado de forma funcional."
     else
-        echo "    [X] ERRO: Falha ao persistir a configuracao no arquivo PAM."
+        echo "    [ERROR] Falha ao persistir a configuracao no arquivo PAM."
         log_event "ERRO" "Injecao do pam_mkhomedir.so falhou na validacao pos-escrita."
         return 1
     fi
@@ -983,8 +1008,8 @@ mod8_adsudo() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                        >> Versao : ${SCRIPT_VERSION} "
-    echo "                        >> Etapa 8: CONFIGURACAO DO SUDO <<"
+    echo "                        Versao : ${SCRIPT_VERSION} "
+    echo "                        Etapa 8: CONFIGURACAO DO SUDO <<"
     echo "    ======================================================================"
     echo "          Configurando privilegios de root para o Grupo do AD"
     echo "    ======================================================================"
@@ -994,7 +1019,7 @@ mod8_adsudo() {
     local TEMP_SUDOERS="/tmp/ad_sudoers_template"
     local SKIP_SUDO=""
 
-    echo "    [*] Preparando regra de subida de privilegio para o grupo do AD..."
+    echo "    [  *  ] Preparando regra de subida de privilegio para o grupo do AD..."
     echo "        Grupo alvo: $AD_GROUP"
     log_event "INFO" "Preparando ad_sudoers para o grupo mapeado: $AD_GROUP"
 
@@ -1005,7 +1030,7 @@ mod8_adsudo() {
     # Cria o arquivo temporario com a regra padrao (Identica a regra do wheel/sudo nativo)
     echo "%${GRUPO_ESCAPADO} ALL=(ALL:ALL) ALL" | sudo tee "$TEMP_SUDOERS" > /dev/null 2>>"$LOG_FILE"
 
-    echo "    [*] Executando analise sintatica de seguranca via visudo..."
+    echo "    [  *  ] Executando analise sintatica de seguranca via visudo..."
     
     # Valida o arquivo temporario. Se houver erro de sintaxe, o visudo aborta
     if sudo visudo -cf "$TEMP_SUDOERS" &>/dev/null; then
@@ -1018,7 +1043,7 @@ mod8_adsudo() {
         echo "    [ OK! ] Regra de Sudoers aplicada em $SUDOERS_TARGET"
         log_event "INFO" "Arquivo de sudoers customizado aplicado em $SUDOERS_TARGET"
     else
-        echo "    [X] ERRO: Falha na validacao de sintaxe do Sudoers."
+        echo "    [ERROR] Falha na validacao de sintaxe do Sudoers."
         echo "        A regra para o grupo contem caracteres nao suportados."
         log_event "ERRO" "O visudo barrou a sintaxe gerada para o grupo $AD_GROUP"
         sudo rm -f "$TEMP_SUDOERS" &>/dev/null || true
@@ -1065,8 +1090,8 @@ mod9_checklist() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                        >> Versao : ${SCRIPT_VERSION} "
-    echo "                        >> Etapa 9: CHECKLIST DE AUDITORIA <<"
+    echo "                        Versao : ${SCRIPT_VERSION} "
+    echo "                        Etapa 9: CHECKLIST DE AUDITORIA <<"
     echo "    ======================================================================"
     echo "          Realizando testes de integridade e validacao dos daemons"
     echo "    ======================================================================"
@@ -1075,31 +1100,31 @@ mod9_checklist() {
     local STATUS_FINAL=0
 
     # --- TESTE 1: STATUS DO SERVICO SSSD ---
-    echo "    [*] Teste 1: Verificando saude do Daemon SSSD..."
+    echo "    [  *  ] Teste 1: Verificando saude do Daemon SSSD..."
     if systemctl is-active --quiet sssd; then
         echo "    [ OK! ] O servico SSSD esta em execucao (Active/Running)."
         log_event "INFO" "Checklist: Servico SSSD validado como Ativo."
     else
-        echo "    [X] ERRO: O servico SSSD encontra-se parado ou com falha."
+        echo "    [ERROR] O servico SSSD encontra-se parado ou com falha."
         log_event "ERRO" "Checklist: Servico SSSD esta inativo!"
         STATUS_FINAL=1
     fi
 
     # --- TESTE 2: RESOLUCAO DE NOMES AD ---
     echo ""
-    echo "    [*] Teste 2: Testando integracao do NSSwitch com SSSD..."
+    echo "    [  *  ] Teste 2: Testando integracao do NSSwitch com SSSD..."
     if realm list 2>>"$LOG_FILE" | grep -q "domain-name: $AD_DOMAIN"; then
         echo "    [ OK! ] O realm reconhece a participacao ativa no dominio: $AD_DOMAIN"
         log_event "INFO" "Checklist: Participacao ativa no realm confirmada."
     else
-        echo "    [X] ERRO: O servidor nao esta listado como membro ativo no realm."
+        echo "    [ERROR] O servidor nao esta listado como membro ativo no realm."
         log_event "ERRO" "Checklist: Servidor ausente na listagem do realm."
         STATUS_FINAL=1
     fi
 
     # --- TESTE 3: RESOLUCAO DNS DO DOMINIO ---
     echo ""
-    echo "    [*] Teste 3: Validando resolucao DNS de registros SRV do AD..."
+    echo "    [  *  ] Teste 3: Validando resolucao DNS de registros SRV do AD..."
     if host -t SRV "_ldap._tcp.${AD_DOMAIN}" &>/dev/null; then
         echo "    [ OK! ] Resolucao de registros SRV do Active Directory funcional."
         log_event "INFO" "Checklist: Registros SRV DNS consultados com sucesso."
@@ -1111,12 +1136,12 @@ mod9_checklist() {
 
     # --- TESTE 4: VALIDAÇÃO DAS DIRETIVAS DO PAM ---
     echo ""
-    echo "    [*] Teste 4: Auditando integridade do modulo de Home no PAM..."
+    echo "    [  *  ] Teste 4: Auditando integridade do modulo de Home no PAM..."
     if grep -q "pam_mkhomedir.so" /etc/pam.d/common-session; then
         echo "    [ OK! ] Persistencia do pam_mkhomedir.so confirmada em common-session."
         log_event "INFO" "Checklist: Diretiva pam_mkhomedir.so confirmada."
     else
-        echo "    [X] ERRO: A diretiva PAM de criacao automatica de Home sumiu."
+        echo "    [ERROR] A diretiva PAM de criacao automatica de Home sumiu."
         log_event "ERRO" "Checklist: pam_mkhomedir sumiu do common-session!"
         STATUS_FINAL=1
     fi
@@ -1173,7 +1198,7 @@ main() {
     clear
     echo ""
     echo "    ======================================================================"
-    echo "                        >> Versao : ${SCRIPT_VERSION} "
+    echo "                        Versao : ${SCRIPT_VERSION} "
     echo "                        >> FIM DO PROCESSO DE AUTOMACAO <<"
     echo "    ======================================================================"
     echo "         O script de integracao terminou todas as suas tarefas."
