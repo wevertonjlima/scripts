@@ -28,6 +28,7 @@ main_banner() {
                             | |                             
                             |_|                                                   
     ===============================================================
+       Versao RedHat Compativel
 EOF
     printf "%s\n\n" "Carregando ..."
     sleep 2
