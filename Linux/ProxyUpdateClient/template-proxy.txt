@@ -1,0 +1,40 @@
+// ==============================================================================
+// TEMPLATE DE PROXY CORPORATIVO PARA ATUALIZACAO DE PACOTES
+// ==============================================================================
+//
+// ATENCAO SOBRE SINALIZACAO DE COMENTARIOS:
+// -> No UBUNTU (este arquivo), utilize APENAS barra dupla "//" para comentar.
+// -> No ROCKY LINUX/REDHAT, o sistema exige APENAS a cerquilha "#" para comentar.
+//
+// ------------------------------------------------------------------------------
+// COMO APLICAR ESTE TEMPLATE NOS SISTEMAS:
+//
+// [1] No UBUNTU / DEBIAN (Seu Ambiente Principal):
+//     Crie/Edite este arquivo em: sudo nano /etc/apt/apt.conf.d/90curtin-aptproxy
+//     As linhas ativas "Acquire::..." no fim do arquivo devem ficar totalmente
+//     encostadas na margem esquerda (sem espacos ou tabulacoes).
+//
+// [2] No ROCKY LINUX / REDHAT / ORACLE LINUX (Excecao):
+//     NAO crie este arquivo la. Em vez disso, mude todos os "//" deste texto
+//     para "#" e adicione a linha de proxy no fim de: sudo nano /etc/dnf/dnf.conf
+//     Sintaxe do Rocky: proxy=http://usuario:senha@ip_do_proxy:porta/
+//
+// ------------------------------------------------------------------------------
+// TABELA DE CONVERSAO DE CARACTERES ESPECIAIS (URL ENCODING):
+// Se a senha do seu usuario do AD possuir algum destes símbolos, substitua:
+//
+//  @  --->  %40       (Arroba)
+//  !  --->  %21       (Exclamacao)
+//  * --->  %2a       (Asterisco)
+//  #  --->  %23       (Cerquilha / Hashtag)
+//  $  --->  %24       (Cifrao)
+//  &  --->  %26       (E comercial)
+//  +  --->  %2b       (Sinal de Mais)
+//  /  --->  %2f       (Barra normal)
+//  \  --->  %5c       (Barra invertida de Dominio Windows)
+//
+// ==============================================================================
+// Segue um exemplo abaixo:
+
+Acquire::http::Proxy "http://pernalonga%40acme.labs:Brasil%212026@192.168.10.56:8080/";
+Acquire::https::Proxy "http://pernalonga%40acme.labs:Brasil%212026@192.168.10.56:8080/";
