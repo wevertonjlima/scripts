@@ -2,7 +2,11 @@
 
 
 
-Em ambientes isolados, o erro **"Username or Password Incorrect"** ao integrar um Linux no AD quase nunca é culpa da senha. O vilão é o Kerberos Pre-authentication, que exige que o relógio do cliente e do DC estejam em sintonia.
+Em ambientes isolados da internet, a sincronização de tempo deixa de ser um detalhe e passa a ser um requisito crítico de segurança. Protocolos como Kerberos (usado pelo Active Directory) falham imediatamente se houver um desvio (drift) maior que 5 minutos entre o cliente e o servidor.  Nestes casos, em que o erro **"Username or Password Incorrect"** ao integrar um Linux no AD quase nunca é culpa da senha. O vilão é o Kerberos Pre-authentication, que exige que o relógio do cliente e do DC estejam em sintonia.
+
+Neste guia, vamos configurar o Domain Controller (DC) para ser a "fonte mestre" e os clientes Linux para confiarem nele.
+
+
 
 ### Cenário de Referência:
 
@@ -31,8 +35,9 @@ _Mesmo com a senha correta, o DC recusa a conexão porque o "timestamp" do pacot
 
 ---
 
-## 2. Configurando a "Fonte da Verdade" (Windows Server)
+## 2. O Lado do Servidor: Configurando o Windows Server (PDC)
 
+Por padrão, um DC tenta buscar o tempo na internet. Se ele não a encontra, ele se declara "não confiável". Precisamos forçá-lo a aceitar o próprio relógio de hardware como verdade absoluta.
 No DC `alfa`, como não há internet, precisamos dizer ao Windows que ele deve ser a autoridade máxima de tempo para a rede interna.
 
 **No PowerShell (Executado no DC ALFA):**
@@ -53,9 +58,39 @@ Restart-Service w32time
 
 ---
 
-## 3. O Ajuste no Cliente (Linux Bishop)
+## 3. Lado do Cliente: Configurando o Linux com Chrony
 
-No Linux, o serviço **Chrony** deve ser configurado para ignorar a internet e "olhar" apenas para o IP do DC `alfa`.
+O Chrony é o sucessor do antigo ntp e é o padrão no Oracle Linux, RHEL, Ubuntu e Debian modernos. Ele é muito mais eficiente em corrigir desvios de tempo rapidamente. No Linux, o serviço **Chrony** deve ser configurado para ignorar a internet e "olhar" apenas para o IP do DC `alfa`.
+
+Instalação:
+RedHat / Oracle Linux / Alma / Rocky:
+sudo dnf install chrony -y
+
+Ubuntu / Debian:
+sudo apt update && sudo apt install chrony -y
+
+
+Configuração (/etc/chrony.conf):
+Edite o arquivo de configuração e remova (ou comente) as pools de internet. Adicione apenas o IP do seu DC:
+
+Bash
+# Comente as linhas de pool externas
+# pool 2.pool.ntp.org iburst
+
+# Adicione seu DC como fonte única e confiável
+server 192.168.15.25 iburst prefer trust
+A flag prefer trust diz ao Linux para priorizar e confiar cegamente nesta fonte interna.
+
+Aplicando as mudanças:
+Bash
+# Habilita e inicia o serviço
+sudo systemctl enable --now chronyd
+
+# Força o ajuste imediato do relógio (pula o tempo ao invés de ajustar lentamente)
+sudo chronyc makestep
+
+
+
 
 **Arquivo `/etc/chrony.conf` no servidor Bishop:**
 
