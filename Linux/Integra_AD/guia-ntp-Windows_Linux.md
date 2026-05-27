@@ -1,4 +1,5 @@
-Guia Definitivo: Sincronização de Tempo (NTP) em Ambientes Air-Gapped (Windows + Linux)
+# Guia Definitivo: Sincronização de Tempo (NTP) em Ambientes Air-Gapped (Windows + Linux)
+
 
 
 Em ambientes isolados, o erro **"Username or Password Incorrect"** ao integrar um Linux no AD quase nunca é culpa da senha. O vilão é o Kerberos Pre-authentication, que exige que o relógio do cliente e do DC estejam em sintonia.
