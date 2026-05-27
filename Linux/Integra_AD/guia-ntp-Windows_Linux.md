@@ -58,64 +58,52 @@ Restart-Service w32time
 
 ---
 
-## 3. Lado do Cliente: Configurando o Linux com Chrony
+## 2. O Lado do Cliente: Configurando o Linux com Chrony
 
-O Chrony é o sucessor do antigo ntp e é o padrão no Oracle Linux, RHEL, Ubuntu e Debian modernos. Ele é muito mais eficiente em corrigir desvios de tempo rapidamente. No Linux, o serviço **Chrony** deve ser configurado para ignorar a internet e "olhar" apenas para o IP do DC `alfa`.
+O **Chrony** é o sucessor do antigo `ntp` e é o padrão no Oracle Linux, RHEL, Ubuntu e Debian modernos. Ele é muito mais eficiente em corrigir desvios de tempo rapidamente.
 
-Instalação:
-RedHat / Oracle Linux / Alma / Rocky:
-sudo dnf install chrony -y
+### Instalação:
 
-Ubuntu / Debian:
-sudo apt update && sudo apt install chrony -y
+- **RedHat / Oracle Linux / Alma / Rocky:** `sudo dnf install chrony -y`
+    
+- **Ubuntu / Debian:** `sudo apt update && sudo apt install chrony -y`
+    
 
+### Configuração (`/etc/chrony.conf`):
 
-Configuração (/etc/chrony.conf):
-Edite o arquivo de configuração e remova (ou comente) as pools de internet. Adicione apenas o IP do seu DC:
+Edite o arquivo de configuração e remova (ou comente) as _pools_ de internet. Adicione apenas o IP do seu DC:
 
 Bash
+
+```
 # Comente as linhas de pool externas
 # pool 2.pool.ntp.org iburst
 
 # Adicione seu DC como fonte única e confiável
 server 192.168.15.25 iburst prefer trust
-A flag prefer trust diz ao Linux para priorizar e confiar cegamente nesta fonte interna.
+```
 
-Aplicando as mudanças:
+_A flag `prefer trust` diz ao Linux para priorizar e confiar cegamente nesta fonte interna._
+
+### Aplicando as mudanças:
+
 Bash
+
+```
 # Habilita e inicia o serviço
 sudo systemctl enable --now chronyd
+sudo systemctl restart chronyd
 
 # Força o ajuste imediato do relógio (pula o tempo ao invés de ajustar lentamente)
 sudo chronyc makestep
-
-
-
-
-**Arquivo `/etc/chrony.conf` no servidor Bishop:**
-
-Plaintext
-
-```
-# server 0.pool.ntp.org iburst (COMENTADO)
-server 192.168.15.25 iburst prefer trust
 ```
 
-**Comandos de Sincronização:**
-
-Bash
-
-```
-[localroot@bishop ~]$ sudo systemctl restart chronyd
-[localroot@bishop ~]$ sudo chronyc makestep
-200 OK
-```
 
 ---
 
-## 4. Validando a Sincronia (A Prova Real)
+## 4. Como validar se está funcionando?
 
-Agora, o comando `tracking` deve mostrar que o Linux "casou" com o DC. Esta é a tela que o seu leitor deve ver para saber que o join vai funcionar:
+Não basta configurar; você precisa provar que a sincronia existe. No terminal Linux, use os comandos:
 
 Bash
 
@@ -183,9 +171,14 @@ MS Name/IP address         Stratum Poll Reach LastRx Last sample
 
 O Active Directory utiliza o **Kerberos**. Quando o `chronyc sources` exibe o asterisco, ele confirma que o desvio de tempo (**Offset**) é mínimo (no exemplo, apenas `-12us`, ou microssegundos). Com essa precisão, o ticket de autenticação enviado pelo Linux será aceito pelo DC `alfa` sem questionamentos de segurança, eliminando o erro de "Password Incorrect".
 
+
+### Uma Ponto de Atenção: O BiOS ClockTime "
+Neste cenário, o seu Domain Controller é o dono do tempo. Se o relógio dele estiver errado, toda a floresta estará errada. Garanta que o relógio de hardware (BIOS) do servidor físico esteja correto e siga esses passos para nunca mais sofrer com erros de "Username or Password incorrect" causados por falhas de Kerberos Pre-authentication.
+
 ---
 
-**Dica do Billy:** Se você rodar o comando e o nome do DC não aparecer, tente usar o IP diretamente no `/etc/chrony.conf`. Às vezes, em ambientes isolados, o DNS demora mais para subir do que o serviço de tempo, e o Chrony pode "desistir" de resolver o nome no boot.
+**Dica:** Se você rodar o comando e o nome do DC não aparecer, tente usar o IP diretamente no `/etc/chrony.conf`. Às vezes, em ambientes isolados, o DNS demora mais para subir do que o serviço de tempo, e o Chrony pode "desistir" de resolver o nome no boot.
+
 
 ## 6. O Resultado Final
 
