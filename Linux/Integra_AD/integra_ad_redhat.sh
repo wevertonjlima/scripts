@@ -116,7 +116,6 @@ SYS_SP=""
 
 # MÓDULO 1: BANNER E BOAS-VINDAS (COM AJUSTE DE FQDN IDEMPOTENTE) %%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod1_banner() {
     clear
     echo ""
@@ -317,12 +316,11 @@ mod1_banner() {
     
     mod_next
 }
-
+# end mod_1
 
 
 # MÓDULO 2: INSTALACAO DE PACOTES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod2_install() {
     clear
     echo ""
@@ -408,12 +406,11 @@ mod2_install() {
     sudo systemctl stop sssd &>/dev/null
     mod_next
 }
-
+# end mod_2
 
 
 # MÓDULO 3: CONFIGURACAO DO FIREWALL %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod3_firewall() {
     clear
     echo ""
@@ -458,13 +455,11 @@ mod3_firewall() {
     
     mod_next
 }
-
-
+# end mod_3
 
 
 # MODULO 4: COLETA E VALIDACAO DOS DADOS DO AD (VERSAO AIR-GAPPED) %%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod4_adinfo() {
     clear
     echo "    ======================================================================"
@@ -584,34 +579,188 @@ mod4_adinfo() {
         
     mod_next
 }
+# end mod_4
+
+# mod5 -original
+## MODULO 5: ADESAO AO DOMINIO (REALM JOIN) %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#mod5_adjoin() {
+#    clear
+#
+#    # ----------------------------------------------------------------------
+#    # Bloco 0. BANNER DE EXECUCAO E FEEDBACK
+#    # ----------------------------------------------------------------------
+#    clear
+#    echo "    ======================================================================"
+#    echo "              >> ETAPA 5/9: INGRESSANDO NO AD"
+#    echo "    ----------------------------------------------------------------------"
+#    echo "                 Ingressando o servidor no dominio: $AD_DOMAIN"
+#    echo "    ======================================================================"	
+#    echo ""	
+#    echo "    [  * ] Configurando padroes do client em /etc/realmd.conf..."
+#    log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
+#    echo ""
+#    echo "    -----------------------------------------------------------------------"
+#    
+#  
+#    # --- COLETA UNIFICADA DE METADADOS (Sem retrabalho) ---
+#    if [ -f /etc/os-release ]; then
+#        . /etc/os-release
+#        readonly SYS_OS="$PRETTY_NAME"
+#        readonly SYS_VER="$VERSION"
+#    else
+#        readonly SYS_OS=$(uname -s)
+#        readonly SYS_VER=$(uname -r)
+#    fi
+#    readonly SYS_SP="Kernel $(uname -r)"
+#    
+#    
+#    # ------------------------------------------------------------------------------------------
+#    # Bloco 1. Geracao do arquivo /etc/realmd.conf
+#    # ------------------------------------------------------------------------------------------
+#    echo "    [  * ] Gerando arquivo /etc/realmd.conf com dados do sistema operacional..."
+#    
+#    if ! sudo tee /etc/realmd.conf > /dev/null <<EOF
+#[config]
+#default-client = sssd
+#
+#[active-directory]
+#os-name = ${SYS_OS}
+#os-version = ${SYS_VER}
+#
+#[$AD_DOMAIN]
+#automatic-id-mapping = yes
+#user-principal = yes
+#fully-qualified-names = no
+#EOF
+#    then
+#        echo "    [ERROR] Falha ao criar o arquivo /etc/realmd.conf."
+#        return 1
+#    else
+#        echo "    [!] Arquivo /etc/realmd.conf criado com sucesso!"
+#    fi
+#
+#    sleep 1
+#
+#    # ----------------------------------------------------------------------
+#    # Bloco 2. AUTENTICACAO E JOIN (Protegido contra set -e)
+#    # ----------------------------------------------------------------------
+#    if [ -z "${AD_UPN:-}" ]; then
+#        AD_UPN="usr_joinad@${AD_DOMAIN^^}"
+#    fi
+#
+#    echo "    Informe a senha para a conta $AD_UPN !?"
+#    read -rs -p "    Senha: " SENHA_LOCAL
+#    echo ""
+#
+#    echo ""
+#    echo "    [  * ] Executando Realm Join... (Aguarde a comunicacao com o DC)"
+#    log_event "INFO" "Disparando comando realm join para o dominio $AD_DOMAIN com o usuario $AD_UPN"
+#
+#    # Desativa temporariamente o encerramento do script em caso de erro no realm join
+#    set +e
+#    if [ -n "${AD_OU:-}" ]; then
+#        sudo realm join --user="$AD_UPN" --computer-ou="$AD_OU" "$AD_DOMAIN" <<< "$SENHA_LOCAL" 2>>"$LOG_FILE"
+#    else
+#        sudo realm join --user="$AD_UPN" "$AD_DOMAIN" <<< "$SENHA_LOCAL" 2>>"$LOG_FILE"
+#    fi
+#    JOIN_STATUS=$?
+#    set -e # Reativa o comportamento estrito de seguranca
+#
+#    # -----------------------------------------------------------------------------------
+#    # Bloco 3. Validacao Do Join E Atualizacao Do Atributos de Sistema Operacional
+#    # -----------------------------------------------------------------------------------
+#    if [ $JOIN_STATUS -eq 0 ]; then
+#        echo "    [v] Servidor ingressado com sucesso!"
+#        log_event "INFO" "Adesao ao realm executada com sucesso absoluto."
+#        
+#        sudo realm permit -g "$AD_GROUP" 2>>"$LOG_FILE"
+#        echo "    [v] Acesso liberado para o grupo: $AD_GROUP"
+#        log_event "INFO" "Permissao de login concedida ao grupo $AD_GROUP"
+#
+#        echo ""
+#        echo "    [  * ] Atualizando atributos de inventario do OS no Active Directory..."
+#        sleep 5
+#        log_event "INFO" "Iniciando atualizacao de atributos LDAP via GSSAPI."
+#
+#        # Garante/Valida o Ticket Kerberos usando a Here-String correta
+#        if ! klist -s &>/dev/null; then
+#            log_event "INFO" "Gerando ticket Kerberos local para $AD_UPN usando credencial em memoria."
+#            kinit "$AD_UPN" 2>>"$LOG_FILE" <<< "$SENHA_LOCAL"
+#        fi
+#
+#        # Ajuste do hostname em UPPERCASE
+#        local COMPUTER_NAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
+#
+#        # Montagem do DN
+#        local COMPUTER_DN=""
+#        if [ -n "${AD_OU:-}" ]; then
+#            COMPUTER_DN="CN=${COMPUTER_NAME},${AD_OU}"
+#        else
+#            COMPUTER_DN="CN=${COMPUTER_NAME},CN=Computers,${AD_BASE_DN}"
+#        fi
+#
+#        log_event "INFO" "DN definido para atualizacao: $COMPUTER_DN. Enviando modificacoes..."
+#        
+#        # Executa o ldapmodify idêntico ao os-update.sh com o GSSAPI agora autenticado no contexto do usuário
+#		set +e
+#        ldapmodify -Y GSSAPI -H "ldap://$AD_DC" 2>>"$LOG_FILE" <<EOF
+#dn: $COMPUTER_DN
+#changetype: modify
+#replace: operatingSystem
+#operatingSystem: $SYS_OS
+#-
+#replace: operatingSystemVersion
+#operatingSystemVersion: $SYS_VER
+#-
+#replace: operatingSystemServicePack
+#operatingSystemServicePack: $SYS_SP
+#EOF
+#        set -e
+#        
+#    else
+#        echo ""
+#        echo "    [ERROR] Falha no ingresso ao dominio."
+#        echo "    Dica: Verifique se o computador ja existe no AD ou se a senha expirou."
+#        log_event "ERRO" "O comando realm join retornou codigo de falha."
+#        unset SENHA_LOCAL
+#        return 1
+#    fi
+#
+#
+#    unset SENHA_LOCAL
+#    mod_next
+#}
+## end mod 5
+#
 
 
 
-# MODULO 5: ADESAO AO DOMINIO (REALM JOIN) %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+# MODULO 5: ADESAO AO DOMINIO (REALM JOIN)
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 mod5_adjoin() {
     clear
 
     # ----------------------------------------------------------------------
     # Bloco 0. BANNER DE EXECUCAO E FEEDBACK
     # ----------------------------------------------------------------------
-    clear
     echo "    ======================================================================"
-    echo "              >> ETAPA 5/9: INGRESSANDO NO AD"
+    echo "                     Etapa 5: ADESAO AO DOMINIO <<"
     echo "    ----------------------------------------------------------------------"
-    echo "                 Ingressando o servidor no dominio: $AD_DOMAIN"
-    echo "    ======================================================================"	
-    echo ""	
-    echo "    [  * ] Configurando padroes do client em /etc/realmd.conf..."
-    log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
+    echo "                        Ingressando o servidor no dominio: $AD_DOMAIN"
+    echo "    ======================================================================"
     echo ""
+    echo "    [  *  ] Configurando padroes do client em /etc/realmd.conf..."
+    log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
+	echo ""
     echo "    -----------------------------------------------------------------------"
-    
+	
   
     # --- COLETA UNIFICADA DE METADADOS (Sem retrabalho) ---
     if [ -f /etc/os-release ]; then
         . /etc/os-release
+        # Padronizando com as strings amigaveis que funcionaram no seu print do AD
         readonly SYS_OS="$PRETTY_NAME"
         readonly SYS_VER="$VERSION"
     else
@@ -619,14 +768,17 @@ mod5_adjoin() {
         readonly SYS_VER=$(uname -r)
     fi
     readonly SYS_SP="Kernel $(uname -r)"
-    
-    
+	
+	
+	
+	# ------------------------------------------------------------------------------------------
+    # Bloco 1. Geração do arquivo /etc/realmd.conf
     # ------------------------------------------------------------------------------------------
-    # Bloco 1. Geracao do arquivo /etc/realmd.conf
-    # ------------------------------------------------------------------------------------------
-    echo "    [  * ] Gerando arquivo /etc/realmd.conf com dados do sistema operacional..."
-    
-    if ! sudo tee /etc/realmd.conf > /dev/null <<EOF
+	
+	# Criacao dinamica do "realmd.conf" baseado nas info do /etc/os-release .
+    echo "    [  *  ] Gerando arquivo /etc/realmd.conf com dados do sistema operacional..."
+	
+	if ! sudo tee /etc/realmd.conf > /dev/null <<EOF
 [config]
 default-client = sssd
 
@@ -639,7 +791,8 @@ automatic-id-mapping = yes
 user-principal = yes
 fully-qualified-names = no
 EOF
-    then
+
+	then
         echo "    [ERROR] Falha ao criar o arquivo /etc/realmd.conf."
         return 1
     else
@@ -649,9 +802,9 @@ EOF
     sleep 1
 
     # ----------------------------------------------------------------------
-    # Bloco 2. AUTENTICACAO E JOIN (Protegido contra set -e)
+    # Bloco 2. AUTENTICACAO E JOIN
     # ----------------------------------------------------------------------
-    if [ -z "${AD_UPN:-}" ]; then
+    if [ -z "$AD_UPN" ]; then
         AD_UPN="usr_joinad@${AD_DOMAIN^^}"
     fi
 
@@ -660,23 +813,21 @@ EOF
     echo ""
 
     echo ""
-    echo "    [  * ] Executando Realm Join... (Aguarde a comunicacao com o DC)"
+    echo "    [  *  ] Executando Realm Join... (Aguarde a comunicacao com o DC)"
     log_event "INFO" "Disparando comando realm join para o dominio $AD_DOMAIN com o usuario $AD_UPN"
 
-    # Desativa temporariamente o encerramento do script em caso de erro no realm join
-    set +e
-    if [ -n "${AD_OU:-}" ]; then
-        sudo realm join --user="$AD_UPN" --computer-ou="$AD_OU" "$AD_DOMAIN" <<< "$SENHA_LOCAL" 2>>"$LOG_FILE"
+    if [ -n "$AD_OU" ]; then
+        echo "$SENHA_LOCAL" | sudo realm join --user="$AD_UPN" --computer-ou="$AD_OU" "$AD_DOMAIN" 2>>"$LOG_FILE"
     else
-        sudo realm join --user="$AD_UPN" "$AD_DOMAIN" <<< "$SENHA_LOCAL" 2>>"$LOG_FILE"
+        echo "$SENHA_LOCAL" | sudo realm join --user="$AD_UPN" "$AD_DOMAIN" 2>>"$LOG_FILE"
     fi
-    JOIN_STATUS=$?
-    set -e # Reativa o comportamento estrito de seguranca
+
 
     # -----------------------------------------------------------------------------------
-    # Bloco 3. Validacao Do Join E Atualizacao Do Atributos de Sistema Operacional
+	# Bloco 3. Validacao Do Join E Atualizacao Do Atributos de Sistema Operacional
+    #	       no Objeto Computador No Active Directory.                 
     # -----------------------------------------------------------------------------------
-    if [ $JOIN_STATUS -eq 0 ]; then
+    if [ $? -eq 0 ]; then
         echo "    [v] Servidor ingressado com sucesso!"
         log_event "INFO" "Adesao ao realm executada com sucesso absoluto."
         
@@ -684,21 +835,22 @@ EOF
         echo "    [v] Acesso liberado para o grupo: $AD_GROUP"
         log_event "INFO" "Permissao de login concedida ao grupo $AD_GROUP"
 
+        # Reaproveitamento do script OS-UPDATE.SH .
         echo ""
-        echo "    [  * ] Atualizando atributos de inventario do OS no Active Directory..."
+        echo "    [  *  ] Atualizando atributos de inventario do OS no Active Directory..."
         sleep 5
         log_event "INFO" "Iniciando atualizacao de atributos LDAP via GSSAPI."
 
-        # Garante/Valida o Ticket Kerberos usando a Here-String correta
+        # Garante/Valida o Ticket Kerberos na sessão atual do usuário usando a senha em memória.
         if ! klist &>/dev/null; then
             log_event "INFO" "Gerando ticket Kerberos local para $AD_UPN usando credencial em memoria."
             kinit "$AD_UPN" 2>>"$LOG_FILE" <<< "$SENHA_LOCAL"
         fi
 
-        # Ajuste do hostname em UPPERCASE
+        # Ajuste do hostname em UPPERCASE exatamente como no seu os-update.
         local COMPUTER_NAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
 
-        # Montagem do DN
+        # Montagem direta do DN baseada no input de OU questionado acima.
         local COMPUTER_DN=""
         if [ -n "${AD_OU:-}" ]; then
             COMPUTER_DN="CN=${COMPUTER_NAME},${AD_OU}"
@@ -722,6 +874,14 @@ replace: operatingSystemServicePack
 operatingSystemServicePack: $SYS_SP
 EOF
 
+        if [ $? -eq 0 ]; then
+            echo "    [v] Atributos do OS atualizados com sucesso no AD!"
+            log_event "INFO" "Atributos operatingSystem injetados via GSSAPI com sucesso."
+        else
+            echo "    [!] Aviso: Falha ao gravar os atributos no objeto do AD."
+            log_event "WARN" "ldapmodify retornou erro durante a gravacao."
+        fi
+        
     else
         echo ""
         echo "    [ERROR] Falha no ingresso ao dominio."
@@ -737,9 +897,9 @@ EOF
 }
 # end mod 5
 
+
 # MÓDULO 6: CONFIGURACAO DO SSSD  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod6_sssdoptimal() {
     clear
     echo "    ======================================================================"
@@ -772,12 +932,11 @@ mod6_sssdoptimal() {
     
     mod_next
 }
-
+# end mod_6
 
 
 # MÓDULO 7: CONFIGURACAO DO PAM (CRIACAO AUTOMATICA DE HOME)  %%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod7_pam_homedir() {
     clear
     echo ""
@@ -799,12 +958,11 @@ mod7_pam_homedir() {
     
     mod_next
 }
-
+# end mod_7
 
 
 # MÓDULO 8: CONFIGURACAO DO SUDO PARA O GRUPO DO AD  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod8_adsudo() {
     clear
     echo ""
@@ -829,12 +987,11 @@ mod8_adsudo() {
     
     mod_next
 }
-
+# end mod_8
 
 
 # MODULO 9: CHECKLIST FINAL DE VERIFICACAO  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod9_checklist() {
     clear
     echo ""
@@ -960,11 +1117,11 @@ mod9_checklist() {
     fi
 	
 }
+# end mod_9
 
 
 # FLUXO PRINCIPAL DO SCRIPT  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 main() {
     mod1_banner                          || exit 1
     mod2_install                         || exit 1
@@ -982,6 +1139,8 @@ main() {
     echo "    ======================================================================"
     echo ""
 }
+# end mod_main
+
 
 # Executa o script
 main "$@"
