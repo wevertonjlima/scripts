@@ -94,11 +94,8 @@ SYS_SP=""
 # end mod_intro
 
 
-
+# MÓDULO 1: BANNER E BOAS-VINDAS (COM AJUSTE DE FQDN IDEMPOTENTE) %%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MÓDULO 1: BANNER E BOAS-VINDAS (COM AJUSTE DE FQDN IDEMPOTENTE)
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod1_banner() {
     clear
     echo ""
@@ -163,7 +160,7 @@ mod1_banner() {
         fi
     done
 
-    # ----------------------------------------------------------------------
+
     # SECAO: VERIFICACAO E AJUSTE DE HOSTNAME E REDE (OTIMIZADO UBUNTU/NETPLAN)
     # ----------------------------------------------------------------------
     while true; do
@@ -324,11 +321,8 @@ mod1_banner() {
 # end mod1
 
 
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 2: INSTALACAO DE PACOTES (APT) - VERSAO UBUNTU
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+# MODULO 2: INSTALACAO DE PACOTES (APT) - VERSAO UBUNTU %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 mod2_install() {
     clear
     echo ""
@@ -393,7 +387,7 @@ mod2_install() {
     )
     
     echo ""
-    echo "    [  *  ] Instalando pacotes: ${PACOTES[  *  ]}"
+    echo "    [  *  ] Instalando pacotes: ${PACOTES[*]}"
     echo "    ----------------------------------------------------------------------"
     echo "    AVISO: O processo pode demorar dependendo da velocidade da conexao."
     echo "    ----------------------------------------------------------------------"
@@ -442,11 +436,8 @@ mod2_install() {
 # end mod2 
 
 
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 3: CONFIGURACAO DE FIREWALL (UFW) - VERSAO UBUNTU
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+# MODULO 3: CONFIGURACAO DE FIREWALL (UFW) - VERSAO UBUNTU %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 mod3_firewall() {
     clear
     echo ""
@@ -515,11 +506,8 @@ mod3_firewall() {
 # end mod3 
 
 
-
+# MODULO 4: COLETA E VALIDACAO DOS DADOS DO AD %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 4: COLETA E VALIDACAO DOS DADOS DO AD
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod4_adinfo() {
     clear
     echo "======================================================================"
@@ -532,6 +520,7 @@ mod4_adinfo() {
     local AD_DOMAIN_INPUT=""
     local CONF_FINAL=""
     local HAS_OU=""
+    local AD_PASS="" # [MELHORIA] Mantem a senha local para nao virar variavel global do shell
 
     # --- [1] Dominio AD e Validacao DNS em Tempo Real ---
     while true; do
@@ -543,7 +532,7 @@ mod4_adinfo() {
         AD_REALM=$(echo "$AD_DOMAIN" | tr '[:lower:]' '[:upper:]')
 
         echo ""
-        echo "[  *  ] Verificando DNS e localizando DCs..."
+        echo "[  * ] Verificando DNS e localizando DCs..."
 
         if dig +short "$AD_DOMAIN" 2>>"$LOG_FILE" | grep -q '.'; then
             AD_DC=$(dig +short "$AD_DOMAIN" 2>>"$LOG_FILE" | head -n1)
@@ -568,6 +557,7 @@ mod4_adinfo() {
 
     echo "----------------------------------------------------------------------"
 
+
     # --- [2] Credenciais e Validacao Kerberos (KINIT) em Tempo Real ---
     while true; do
         echo ""
@@ -588,8 +578,9 @@ mod4_adinfo() {
         echo ""
 
         echo ""
-        echo "[  *  ] Validando credenciais via Kerberos..."
+        echo "[  * ] Validando credenciais via Kerberos..."
 
+        # Mantido conforme o seu design original por conta do fluxo macro
         sudo kdestroy &>/dev/null || true
 
         if echo "$AD_PASS" | kinit "$AD_UPN" >/dev/null 2>&1; then
@@ -624,16 +615,19 @@ mod4_adinfo() {
     done
 
     echo "----------------------------------------------------------------------"
-
+		
     # --- [4] Tratamento Interativo da OU ---
     while true; do
         echo ""
-        echo "Deseja especificar uma OU para o servidor?"
-        echo "Se digitar N, sera utilizado o container padrao 'Computers'"
+        echo "Deseja utilizar o container padrao Computers no Active Directory?"
         read -erp "(s/n): " HAS_OU
         HAS_OU="${HAS_OU,,}"
         
         if [[ "$HAS_OU" == "s" ]]; then
+            AD_OU="" 
+            echo "[ OK! ] Utilizando container padrao do Active Directory."
+            break
+        elif [[ "$HAS_OU" == "n" ]]; then
             echo ""
             echo "Exemplo de OU: OU=Servers,OU=Computers,DC=empresa,DC=local"
             read -erp "Digite a OU exata: " AD_OU
@@ -641,12 +635,8 @@ mod4_adinfo() {
                 echo "[ OK! ] Container customizado definido."
                 break
             else
-                echo "[ERROR] O caminho da OU nao pode ser vazio se selecionou 's'."
+                echo "[ERROR] O caminho da OU nao pode ser vazio se selecionou 'n'."
             fi
-        elif [[ "$HAS_OU" == "n" ]]; then
-            AD_OU="" 
-            echo "[ OK! ] Utilizando container padrao do Active Directory."
-            break
         else
             echo ""
             echo "Resposta invalida. Digite 's' para sim ou 'n' para nao."
@@ -684,7 +674,7 @@ mod4_adinfo() {
 
     # --- [6] Aplicacao Definitiva do Hostname FQDN ---
     echo ""
-    echo "[  *  ] Aplicando Hostname FQDN: $FINAL_FQDN"
+    echo "[  * ] Aplicando Hostname FQDN: $FINAL_FQDN"
     log_event "INFO" "Aplicando FQDN definitivo pos-validacao: $FINAL_FQDN"
     sudo hostnamectl set-hostname "$FINAL_FQDN" 2>>"$LOG_FILE"
 
@@ -695,8 +685,11 @@ mod4_adinfo() {
     echo "[ OK! ] Dados validados e Hostname atualizado."
     log_event "INFO" "Modulo 4 finalizado com sucesso. Hostname e variaveis de ambiente prontas."
 
-    # Garante visibilidade global total para o Modulo 5
-    export AD_DOMAIN AD_DC AD_BASE_DN AD_UPN AD_PASS AD_GROUP AD_REALM AD_OU AD_USER_ONLY
+    # [BLINDAGEM] Expura a senha local definitivamente antes de passar o bastao
+    unset AD_PASS
+
+    # Garante visibilidade global total para o Modulo 5 (Isolando a senha com sucesso!)
+    export AD_DOMAIN AD_DC AD_BASE_DN AD_UPN AD_GROUP AD_REALM AD_OU AD_USER_ONLY
 
     mod_next
 }
@@ -706,7 +699,6 @@ mod4_adinfo() {
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # MODULO 5: ADESAO AO DOMINIO (REALM JOIN)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 mod5_adjoin() {
     clear
 
@@ -719,11 +711,15 @@ mod5_adjoin() {
     echo "                        Ingressando o servidor no dominio: $AD_DOMAIN"
     echo "    ======================================================================"
     echo ""
-    echo "    [  *  ] Configurando padroes do client em /etc/realmd.conf..."
-    log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
-	echo ""
+    echo "    [  * ] Configurando padroes do client em /etc/realmd.conf..."
     echo "    -----------------------------------------------------------------------"
+	echo ""
+	log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
 	
+	
+	# --- AJUSTE DE ESCOPO E SEGURANCA ---
+    local SENHA_LOCAL=""  # [MELHORIA] Mantem a senha local para nao virar variavel global do shell
+
   
     # --- COLETA UNIFICADA DE METADADOS (Sem retrabalho) ---
     if [ -f /etc/os-release ]; then
@@ -1082,8 +1078,7 @@ mod8_adsudo() {
 # end mod8
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 9: AUDITORIA FINAL (CHECKLIST) - VERSAO UBUNTU
+# MODULO 9: AUDITORIA FINAL (CHECKLIST) - VERSAO UBUNTU %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 mod9_checklist() {
@@ -1178,8 +1173,8 @@ mod9_checklist() {
 # end mod9
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# ROTINA PRINCIPAL (MAIN) - ORQUESTRAÇÃO DO SCRIPT
+
+# ROTINA PRINCIPAL (MAIN) - ORQUESTRAÇÃO DO SCRIPT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 main() {
@@ -1194,24 +1189,6 @@ main() {
     mod8_adsudo
     mod9_checklist
 
-    # Encerramento formal do script na tela do administrador
-    clear
-    echo ""
-    echo "    ======================================================================"
-    echo "                        Versao : ${SCRIPT_VERSION} "
-    echo "                        >> FIM DO PROCESSO DE AUTOMACAO <<"
-    echo "    ======================================================================"
-    echo "         O script de integracao terminou todas as suas tarefas."
-    echo "    ======================================================================"
-    echo ""
-    echo "    [ OK! ] Script executado por completo."
-    echo "            Recomenda-se realizar um teste de login SSH utilizando"
-    echo "            uma credencial valida do Active Directory."
-    echo ""
-    echo "    ======================================================================"
-    echo ""
 }
 # end main
-
-# --- PROVOCAÇÃO DA EXECUÇÃO ---
 main "$@"
