@@ -458,286 +458,199 @@ mod3_firewall() {
 # end mod_3
 
 
-# MODULO 4: COLETA E VALIDACAO DOS DADOS DO AD (VERSAO AIR-GAPPED) %%%%%%%%%%%%%%%%%%%%%%
+
+# MODULO 4: COLETA E VALIDACAO DOS DADOS DO AD %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 mod4_adinfo() {
     clear
-    echo "    ======================================================================"
-    echo "              >> ETAPA 4/9: COLETA E VALIDACAO DOS DADOS DO AD"
-    echo "    ----------------------------------------------------------------------"
-    echo "                 Validando informacoes do Active Directory"
-    echo "    ======================================================================"	
+    echo "======================================================================"
+    echo "                      Versao : ${SCRIPT_VERSION} "
+    echo "                      Etapa 4: COLETA E VALIDACAO DOS DADOS DO AD <<"
+    echo "======================================================================"
     echo ""
 
-    # --- [1] Dominio AD ---
+    # Apenas variaveis de controle de fluxo interno permanecem locais
+    local AD_DOMAIN_INPUT=""
+    local CONF_FINAL=""
+    local HAS_OU=""
+    local AD_PASS="" # [MELHORIA] Mantem a senha local para nao virar variavel global do shell
+
+    # --- [1] Dominio AD e Validacao DNS em Tempo Real ---
     while true; do
-        echo      "    Informe o nome do dominio!?"
-        echo      "    (ex: meudominio.local)"
-        read -erp "    Digite: " AD_DOMAIN_INPUT
-        
+        echo "Informe o nome do dominio!?"
+        echo "(ex: meudominio.local)"
+        read -erp "Digite: " AD_DOMAIN_INPUT
+
         AD_DOMAIN=$(echo "$AD_DOMAIN_INPUT" | tr '[:upper:]' '[:lower:]')
         AD_REALM=$(echo "$AD_DOMAIN" | tr '[:lower:]' '[:upper:]')
-        
+
         echo ""
-        echo      "    [  *  ] Verificando DNS e localizando DCs..."
-        
-        if dig +short "$AD_DOMAIN" | grep -q '.'; then
-            AD_DC=$(dig +short "$AD_DOMAIN" | head -n1)
+        echo "[  * ] Verificando DNS e localizando DCs..."
+
+        if dig +short "$AD_DOMAIN" 2>>"$LOG_FILE" | grep -q '.'; then
+            AD_DC=$(dig +short "$AD_DOMAIN" 2>>"$LOG_FILE" | head -n1)
             if [ -z "$AD_DC" ]; then
-                AD_DC=$(dig +short "_ldap._tcp.dc._msdcs.$AD_DOMAIN" SRV | awk '{print $4}' | sed 's/\.$//' | head -n1)
+                AD_DC=$(dig +short "_ldap._tcp.dc._msdcs.$AD_DOMAIN" SRV 2>>"$LOG_FILE" | awk '{print $4}' | sed 's/\.$//' | head -n1)
             fi
 
             if [ -n "$AD_DC" ]; then
-                echo "    [ OK! ] Dominio resolvido. DC: $AD_DC"
-				AD_BASE_DN="DC=$(echo "$AD_DOMAIN" | sed 's/\./,DC=/g')"
+                echo "[ OK! ] Dominio resolvido. DC: $AD_DC"
+                log_event "INFO" "Dominio $AD_DOMAIN resolvido com sucesso no DC $AD_DC"
+                AD_BASE_DN="DC=$(echo "$AD_DOMAIN" | sed 's/\./,DC=/g')"
                 break
             fi
         fi
-        echo "    [X] Erro: Dominio nao resolvivel. Verifique o /etc/resolv.conf."
-        echo "    ----------------------------------------------------------------------"
+        
+        echo ""
+        echo "[ERROR] Dominio nao resolvivel. Verifique o /etc/resolv.conf."
+        log_event "AVISO" "Falha ao resolver o dominio DNS: $AD_DOMAIN"
+        echo "----------------------------------------------------------------------"
+        echo ""
     done
 
-    echo     "    ----------------------------------------------------------------------"
+    echo "----------------------------------------------------------------------"
 
-# --- [2] Credenciais ---
+
+    # --- [2] Credenciais e Validacao Kerberos (KINIT) em Tempo Real ---
     while true; do
         echo ""
-        echo "    Informe a conta de servico!?"
-        echo "    (ex: usr-service)"
-        read -erp "    Digite: " AD_USER_ONLY
-        
+        echo "Informe a conta de servico!?"
+        echo "(ex: usr-service)"
+        read -erp "Digite: " AD_USER_ONLY
+
+        if [ -z "$AD_USER_ONLY" ]; then
+            echo "[ERROR] O usuario nao pode ser vazio."
+            continue
+        fi
+
         AD_UPN="${AD_USER_ONLY}@${AD_REALM}"
-        
+
         echo ""
-        echo "    Informe a senha para a conta $AD_UPN !?"
-        read -s -p "    Senha: " AD_PASS
+        echo "Informe a senha para a conta $AD_UPN !?"
+        read -s -p "Senha: " AD_PASS
         echo ""
 
         echo ""
-        echo "    [  * ] Validando credenciais via Kerberos..."
-        
-        # Ajuste conforme Opcao 2: Envio seguro da senha via Here-String sem espacos adicionais
-        if kinit "$AD_UPN" <<< "$AD_PASS" >/dev/null 2>&1; then
-            echo "    [ OK! ] Credenciais validas para $AD_UPN"
-            kdestroy >/dev/null 2>&1
+        echo "[  * ] Validando credenciais via Kerberos..."
+
+        # Mantido conforme o seu design original por conta do fluxo macro
+        sudo kdestroy &>/dev/null || true
+
+        if echo "$AD_PASS" | kinit "$AD_UPN" >/dev/null 2>&1; then
+            echo "[ OK! ] Credenciais validas para $AD_UPN"
+            log_event "INFO" "Credenciais do usuario $AD_UPN validadas com sucesso via kinit."
+            sudo kdestroy &>/dev/null || true
             break
         else
-            echo "    [X] Falha na autenticacao!"
+            echo ""
+            echo "[X] Falha na autenticacao!"
             echo "    Dica: Verifique a senha ou sincronismo de tempo (ntp/chrony)."
-            echo "    ----------------------------------------------------------------------"
+            log_event "AVISO" "Falha de autenticacao Kerberos para o usuario $AD_UPN"
+            echo "----------------------------------------------------------------------"
             unset AD_PASS
         fi
     done
-    echo "    ----------------------------------------------------------------------"
+
+    echo "----------------------------------------------------------------------"
 
     # --- [3] Grupo de Sudo ---
-    echo ""
-    echo "    Informe o nome do grupo do AD para SUDO !?"
-    echo "    (ex: Admins_Linux)"
-    read -erp "    Digite: " AD_GROUP
+    while true; do
+        echo ""
+        echo "Informe o nome do grupo do AD para SUDO !?"
+        echo "(ex: Admins_Linux)"
+        read -erp "Digite: " AD_GROUP
+        
+        if [ -n "$AD_GROUP" ]; then
+            break
+        else
+            echo "[ERROR] O nome do grupo nao pode ser vazio."
+        fi
+    done
 
-    # --- [4] RESUMO DE CONFIRMACAO E AJUSTE DE HOSTNAME ---
+    echo "----------------------------------------------------------------------"
+		
+    # --- [4] Tratamento Interativo da OU ---
+    while true; do
+        echo ""
+        echo "Deseja utilizar o container padrao Computers no Active Directory?"
+        read -erp "(s/n): " HAS_OU
+        HAS_OU="${HAS_OU,,}"
+        
+        if [[ "$HAS_OU" == "s" ]]; then
+            AD_OU="" 
+            echo "[ OK! ] Utilizando container padrao do Active Directory."
+            break
+        elif [[ "$HAS_OU" == "n" ]]; then
+            echo ""
+            echo "Exemplo de OU: OU=Servers,OU=Computers,DC=empresa,DC=local"
+            read -erp "Digite a OU exata: " AD_OU
+            if [ -n "$AD_OU" ]; then
+                echo "[ OK! ] Container customizado definido."
+                break
+            else
+                echo "[ERROR] O caminho da OU nao pode ser vazio se selecionou 'n'."
+            fi
+        else
+            echo ""
+            echo "Resposta invalida. Digite 's' para sim ou 'n' para nao."
+        fi
+    done
+
+    # --- [5] Resumo de Confirmacao Interativo ---
     clear
     local HOST_SHORT=$(hostname -s)
     local FINAL_FQDN="${HOST_SHORT}.${AD_DOMAIN}"
-    
-    echo "    ======================================================================"
-    echo "            CONFIRME AS INFORMACOES PARA O INGRESSO"
-    echo "    ======================================================================"
-    echo "           - Computador (dnsname) ...: $FINAL_FQDN"
-    echo "           - Conta de Servico .......: $AD_UPN"
-    echo "           - Grupo Admin Linux ......: $AD_GROUP"
-    echo "           - Controlador Dominio ....: $AD_DC"
-    echo "    ======================================================================"
-    echo ""
-    
-    read -erp "    Os dados acima estao corretos? (s/n): " CONF_FINAL
-    
-    # Tratamento nativo do Bash: converte a string para minusculo e elimina espacos indesejados
-    CONF_FINAL_LOWER=$(echo "$CONF_FINAL" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    local OU_DISPLAY="$AD_OU"
+    [ -z "$OU_DISPLAY" ] && OU_DISPLAY="Padrao do Active Directory (Computers)"
 
-    if [[ "$CONF_FINAL_LOWER" != "s" ]]; then
-        echo "    [!] Operacao cancelada pelo usuario. Reiniciando coleta..."
-        sleep 1
+    echo "======================================================================"
+    echo "          CONFIRME AS INFORMACOES PARA O INGRESSO"
+    echo "======================================================================"
+    echo " - FQDN Computador .....: $FINAL_FQDN"
+    echo " - Conta de Servico ....: $AD_UPN"
+    echo " - Grupo Admin Linux ...: $AD_GROUP"
+    echo " - Controlador Dominio .: $AD_DC"
+    echo " - Container ...........: $OU_DISPLAY"
+    echo "======================================================================"
+    echo ""
+
+    read -erp "Os dados acima estao corretos? (s/n): " CONF_FINAL
+    if [[ "$(echo "$CONF_FINAL" | tr '[:upper:]' '[:lower:]')" != "s" ]]; then
+        echo ""
+        echo "[!] Operacao cancelada pelo usuario. Reiniciando coleta..."
+        log_event "INFO" "Usuario rejeitou o resumo de confirmacao. Reiniciando Modulo 4."
+        unset AD_PASS
+        sleep 2
         mod4_adinfo
         return
     fi
 
-    # Aplica o Hostname FQDN de forma definitiva agora que o dominio foi validado
+    # --- [6] Aplicacao Definitiva do Hostname FQDN ---
     echo ""
-    echo "    [  *  ] Aplicando Hostname FQDN: $FINAL_FQDN"
-    sudo hostnamectl set-hostname "$FINAL_FQDN"
-    
-    # Ajuste idempotente no /etc/hosts para garantir resolucao local
+    echo "[  * ] Aplicando Hostname FQDN: $FINAL_FQDN"
+    log_event "INFO" "Aplicando FQDN definitivo pos-validacao: $FINAL_FQDN"
+    sudo hostnamectl set-hostname "$FINAL_FQDN" 2>>"$LOG_FILE"
+
     if ! grep -q "$FINAL_FQDN" /etc/hosts; then
-        echo "    127.0.0.1   $FINAL_FQDN $HOST_SHORT" | sudo tee -a /etc/hosts > /dev/null
+        echo "127.0.0.1   $FINAL_FQDN $HOST_SHORT" | sudo tee -a /etc/hosts > /dev/null 2>>"$LOG_FILE"
     fi
 
-    echo "    [  *  ] Dados validados e Hostname atualizado."
-    
-    export AD_DOMAIN AD_DC AD_BASE_DN AD_UPN AD_PASS AD_GROUP AD_REALM
-        
+    echo "[ OK! ] Dados validados e Hostname atualizado."
+    log_event "INFO" "Modulo 4 finalizado com sucesso. Hostname e variaveis de ambiente prontas."
+
+    # [BLINDAGEM] Expura a senha local definitivamente antes de passar o bastao
+    unset AD_PASS
+
+    # Garante visibilidade global total para o Modulo 5 (Isolando a senha com sucesso!)
+    export AD_DOMAIN AD_DC AD_BASE_DN AD_UPN AD_GROUP AD_REALM AD_OU AD_USER_ONLY
+
     mod_next
 }
-# end mod_4
-
-# mod5 -original
-## MODULO 5: ADESAO AO DOMINIO (REALM JOIN) %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-## %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#mod5_adjoin() {
-#    clear
-#
-#    # ----------------------------------------------------------------------
-#    # Bloco 0. BANNER DE EXECUCAO E FEEDBACK
-#    # ----------------------------------------------------------------------
-#    clear
-#    echo "    ======================================================================"
-#    echo "              >> ETAPA 5/9: INGRESSANDO NO AD"
-#    echo "    ----------------------------------------------------------------------"
-#    echo "                 Ingressando o servidor no dominio: $AD_DOMAIN"
-#    echo "    ======================================================================"	
-#    echo ""	
-#    echo "    [  * ] Configurando padroes do client em /etc/realmd.conf..."
-#    log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
-#    echo ""
-#    echo "    -----------------------------------------------------------------------"
-#    
-#  
-#    # --- COLETA UNIFICADA DE METADADOS (Sem retrabalho) ---
-#    if [ -f /etc/os-release ]; then
-#        . /etc/os-release
-#        readonly SYS_OS="$PRETTY_NAME"
-#        readonly SYS_VER="$VERSION"
-#    else
-#        readonly SYS_OS=$(uname -s)
-#        readonly SYS_VER=$(uname -r)
-#    fi
-#    readonly SYS_SP="Kernel $(uname -r)"
-#    
-#    
-#    # ------------------------------------------------------------------------------------------
-#    # Bloco 1. Geracao do arquivo /etc/realmd.conf
-#    # ------------------------------------------------------------------------------------------
-#    echo "    [  * ] Gerando arquivo /etc/realmd.conf com dados do sistema operacional..."
-#    
-#    if ! sudo tee /etc/realmd.conf > /dev/null <<EOF
-#[config]
-#default-client = sssd
-#
-#[active-directory]
-#os-name = ${SYS_OS}
-#os-version = ${SYS_VER}
-#
-#[$AD_DOMAIN]
-#automatic-id-mapping = yes
-#user-principal = yes
-#fully-qualified-names = no
-#EOF
-#    then
-#        echo "    [ERROR] Falha ao criar o arquivo /etc/realmd.conf."
-#        return 1
-#    else
-#        echo "    [!] Arquivo /etc/realmd.conf criado com sucesso!"
-#    fi
-#
-#    sleep 1
-#
-#    # ----------------------------------------------------------------------
-#    # Bloco 2. AUTENTICACAO E JOIN (Protegido contra set -e)
-#    # ----------------------------------------------------------------------
-#    if [ -z "${AD_UPN:-}" ]; then
-#        AD_UPN="usr_joinad@${AD_DOMAIN^^}"
-#    fi
-#
-#    echo "    Informe a senha para a conta $AD_UPN !?"
-#    read -rs -p "    Senha: " SENHA_LOCAL
-#    echo ""
-#
-#    echo ""
-#    echo "    [  * ] Executando Realm Join... (Aguarde a comunicacao com o DC)"
-#    log_event "INFO" "Disparando comando realm join para o dominio $AD_DOMAIN com o usuario $AD_UPN"
-#
-#    # Desativa temporariamente o encerramento do script em caso de erro no realm join
-#    set +e
-#    if [ -n "${AD_OU:-}" ]; then
-#        sudo realm join --user="$AD_UPN" --computer-ou="$AD_OU" "$AD_DOMAIN" <<< "$SENHA_LOCAL" 2>>"$LOG_FILE"
-#    else
-#        sudo realm join --user="$AD_UPN" "$AD_DOMAIN" <<< "$SENHA_LOCAL" 2>>"$LOG_FILE"
-#    fi
-#    JOIN_STATUS=$?
-#    set -e # Reativa o comportamento estrito de seguranca
-#
-#    # -----------------------------------------------------------------------------------
-#    # Bloco 3. Validacao Do Join E Atualizacao Do Atributos de Sistema Operacional
-#    # -----------------------------------------------------------------------------------
-#    if [ $JOIN_STATUS -eq 0 ]; then
-#        echo "    [v] Servidor ingressado com sucesso!"
-#        log_event "INFO" "Adesao ao realm executada com sucesso absoluto."
-#        
-#        sudo realm permit -g "$AD_GROUP" 2>>"$LOG_FILE"
-#        echo "    [v] Acesso liberado para o grupo: $AD_GROUP"
-#        log_event "INFO" "Permissao de login concedida ao grupo $AD_GROUP"
-#
-#        echo ""
-#        echo "    [  * ] Atualizando atributos de inventario do OS no Active Directory..."
-#        sleep 5
-#        log_event "INFO" "Iniciando atualizacao de atributos LDAP via GSSAPI."
-#
-#        # Garante/Valida o Ticket Kerberos usando a Here-String correta
-#        if ! klist -s &>/dev/null; then
-#            log_event "INFO" "Gerando ticket Kerberos local para $AD_UPN usando credencial em memoria."
-#            kinit "$AD_UPN" 2>>"$LOG_FILE" <<< "$SENHA_LOCAL"
-#        fi
-#
-#        # Ajuste do hostname em UPPERCASE
-#        local COMPUTER_NAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
-#
-#        # Montagem do DN
-#        local COMPUTER_DN=""
-#        if [ -n "${AD_OU:-}" ]; then
-#            COMPUTER_DN="CN=${COMPUTER_NAME},${AD_OU}"
-#        else
-#            COMPUTER_DN="CN=${COMPUTER_NAME},CN=Computers,${AD_BASE_DN}"
-#        fi
-#
-#        log_event "INFO" "DN definido para atualizacao: $COMPUTER_DN. Enviando modificacoes..."
-#        
-#        # Executa o ldapmodify idêntico ao os-update.sh com o GSSAPI agora autenticado no contexto do usuário
-#		set +e
-#        ldapmodify -Y GSSAPI -H "ldap://$AD_DC" 2>>"$LOG_FILE" <<EOF
-#dn: $COMPUTER_DN
-#changetype: modify
-#replace: operatingSystem
-#operatingSystem: $SYS_OS
-#-
-#replace: operatingSystemVersion
-#operatingSystemVersion: $SYS_VER
-#-
-#replace: operatingSystemServicePack
-#operatingSystemServicePack: $SYS_SP
-#EOF
-#        set -e
-#        
-#    else
-#        echo ""
-#        echo "    [ERROR] Falha no ingresso ao dominio."
-#        echo "    Dica: Verifique se o computador ja existe no AD ou se a senha expirou."
-#        log_event "ERRO" "O comando realm join retornou codigo de falha."
-#        unset SENHA_LOCAL
-#        return 1
-#    fi
-#
-#
-#    unset SENHA_LOCAL
-#    mod_next
-#}
-## end mod 5
-#
+# end mod4
 
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# MODULO 5: ADESAO AO DOMINIO (REALM JOIN)
+# MODULO 5: ADESAO AO DOMINIO (REALM JOIN) E ATUALIZACAO DINAMICA DE ATRIBUTOS AD
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 mod5_adjoin() {
     clear
@@ -751,34 +664,33 @@ mod5_adjoin() {
     echo "                        Ingressando o servidor no dominio: $AD_DOMAIN"
     echo "    ======================================================================"
     echo ""
-    echo "    [  *  ] Configurando padroes do client em /etc/realmd.conf..."
-    log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
-	echo ""
+    echo "    [  * ] Configurando padroes do client em /etc/realmd.conf..."
     echo "    -----------------------------------------------------------------------"
+	echo ""
+	log_event "INFO" "Iniciando a geracao do arquivo /etc/realmd.conf para $AD_DOMAIN"
 	
-  
-    # --- COLETA UNIFICADA DE METADADOS (Sem retrabalho) ---
+	
+	# --- AJUSTE DE ESCOPO E SEGURANCA ---
+    local SENHA_LOCAL=""  # [MELHORIA] Mantem a senha local para nao virar variavel global do shell
+	
+	
+    # --- COLETA UNIFICADA DE METADADOS (Baseada na logica funcional do os-update.sh) ---
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        # Padronizando com as strings amigaveis que funcionaram no seu print do AD
-        readonly SYS_OS="$PRETTY_NAME"
-        readonly SYS_VER="$VERSION"
+        readonly SYS_OS="$NAME"
+        readonly SYS_VER="$VERSION_ID"
     else
         readonly SYS_OS=$(uname -s)
         readonly SYS_VER=$(uname -r)
     fi
     readonly SYS_SP="Kernel $(uname -r)"
 	
-	
-	
-	# ------------------------------------------------------------------------------------------
-    # Bloco 1. Geração do arquivo /etc/realmd.conf
     # ------------------------------------------------------------------------------------------
+    # Bloco 1. Geracao do arquivo /etc/realmd.conf
+    # ------------------------------------------------------------------------------------------
+    echo "    [  * ] Gerando arquivo /etc/realmd.conf com dados do sistema operacional..."
 	
-	# Criacao dinamica do "realmd.conf" baseado nas info do /etc/os-release .
-    echo "    [  *  ] Gerando arquivo /etc/realmd.conf com dados do sistema operacional..."
-	
-	if ! sudo tee /etc/realmd.conf > /dev/null <<EOF
+    if ! sudo tee /etc/realmd.conf > /dev/null <<EOF
 [config]
 default-client = sssd
 
@@ -791,8 +703,7 @@ automatic-id-mapping = yes
 user-principal = yes
 fully-qualified-names = no
 EOF
-
-	then
+    then
         echo "    [ERROR] Falha ao criar o arquivo /etc/realmd.conf."
         return 1
     else
@@ -813,7 +724,7 @@ EOF
     echo ""
 
     echo ""
-    echo "    [  *  ] Executando Realm Join... (Aguarde a comunicacao com o DC)"
+    echo "    [  * ] Executando Realm Join... (Aguarde a comunicacao com o DC)"
     log_event "INFO" "Disparando comando realm join para o dominio $AD_DOMAIN com o usuario $AD_UPN"
 
     if [ -n "$AD_OU" ]; then
@@ -822,10 +733,8 @@ EOF
         echo "$SENHA_LOCAL" | sudo realm join --user="$AD_UPN" "$AD_DOMAIN" 2>>"$LOG_FILE"
     fi
 
-
     # -----------------------------------------------------------------------------------
-	# Bloco 3. Validacao Do Join E Atualizacao Do Atributos de Sistema Operacional
-    #	       no Objeto Computador No Active Directory.                 
+    # Bloco 3. Validacao Do Join E Atualizacao Dinamica Baseada no os-update.sh              
     # -----------------------------------------------------------------------------------
     if [ $? -eq 0 ]; then
         echo "    [v] Servidor ingressado com sucesso!"
@@ -835,33 +744,53 @@ EOF
         echo "    [v] Acesso liberado para o grupo: $AD_GROUP"
         log_event "INFO" "Permissao de login concedida ao grupo $AD_GROUP"
 
-        # Reaproveitamento do script OS-UPDATE.SH .
         echo ""
-        echo "    [  *  ] Atualizando atributos de inventario do OS no Active Directory..."
-        sleep 5
-        log_event "INFO" "Iniciando atualizacao de atributos LDAP via GSSAPI."
+        echo "    [  * ] Iniciando descoberta e mapeamento LDAP do objeto..."
+        log_event "INFO" "Iniciando fase de descoberta dinamica de topologia para atualizacao de atributos."
 
-        # Garante/Valida o Ticket Kerberos na sessão atual do usuário usando a senha em memória.
-        if ! klist &>/dev/null; then
-            log_event "INFO" "Gerando ticket Kerberos local para $AD_UPN usando credencial em memoria."
-            kinit "$AD_UPN" 2>>"$LOG_FILE" <<< "$SENHA_LOCAL"
+        # Descoberta automatica do Domain Controller via DNS SRV (Idêntico ao os-update.sh)
+        local DC_LIST
+        DC_LIST=$(dig +short _ldap._tcp.dc._msdcs."$AD_DOMAIN" SRV 2>>"$LOG_FILE" | awk '{print $4}' | sed 's/\.$//')
+        local DETECTED_DC
+        DETECTED_DC=$(echo "$DC_LIST" | head -n1)
+
+        if [ -z "$DETECTED_DC" ]; then
+            log_event "ERROR" "Nao foi possivel localizar um Domain Controller via DNS SRV."
+            echo "    [!] Aviso: Falha na localizacao dinamica do DC. Atributos nao modificados."
+            unset SENHA_LOCAL
+            return 1
         fi
 
-        # Ajuste do hostname em UPPERCASE exatamente como no seu os-update.
-        local COMPUTER_NAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
+        local CALC_BASE_DN
+        CALC_BASE_DN="DC=$(echo "$AD_DOMAIN" | sed 's/\./,DC=/g')"
+        local AD_REALM
+        AD_REALM=$(echo "$AD_DOMAIN" | tr '[:lower:]' '[:upper:]')
 
-        # Montagem direta do DN baseada no input de OU questionado acima.
-        local COMPUTER_DN=""
-        if [ -n "${AD_OU:-}" ]; then
-            COMPUTER_DN="CN=${COMPUTER_NAME},${AD_OU}"
+        # Forca e garante a geracao do Ticket Kerberos em cache usando as credenciais em memoria
+        log_event "INFO" "Gerando ticket Kerberos local para $AD_UPN."
+        echo "$SENHA_LOCAL" | kinit "$AD_UPN" 2>>"$LOG_FILE"
+
+        # Captura e normalizacao do hostname do objeto
+        local COMPUTER_NAME
+        COMPUTER_NAME=$(hostname -s | tr '[:lower:]' '[:upper:]')
+
+        # Busca dinamica do DN real do objeto no AD para evitar caminhos estaticos quebrados
+        local COMPUTER_DN
+        COMPUTER_DN=$(ldapsearch -LLL -Y GSSAPI -o ldif-wrap=no \
+            -H "ldap://$DETECTED_DC" \
+            -b "$CALC_BASE_DN" \
+            "(sAMAccountName=${COMPUTER_NAME}\$)" dn 2>>"$LOG_FILE" | sed -n 's/^dn: //p')
+
+        if [ -z "$COMPUTER_DN" ]; then
+            log_event "ERROR" "Nao foi possivel localizar o Distinguished Name (DN) para ${COMPUTER_NAME}$ no LDAP."
+            echo "    [!] Aviso: Objeto nao localizado via ldapsearch."
         else
-            COMPUTER_DN="CN=${COMPUTER_NAME},CN=Computers,${AD_BASE_DN}"
-        fi
+            log_event "INFO" "DN localizado: $COMPUTER_DN. Enviando modificacoes estruturais via GSSAPI..."
+            echo "    [  * ] Atualizando atributos de inventario do OS no Active Directory..."
 
-        log_event "INFO" "DN definido para atualizacao: $COMPUTER_DN. Enviando modificacoes..."
-        
-        # Executa o ldapmodify idêntico ao os-update.sh com o GSSAPI agora autenticado no contexto do usuário
-        ldapmodify -Y GSSAPI -H "ldap://$AD_DC" 2>>"$LOG_FILE" <<EOF
+            # Executa a gravacao exata que funcionou no seu script independente
+            set +e
+            ldapmodify -Y GSSAPI -H "ldap://$DETECTED_DC" >> "$LOG_FILE" 2>&1 <<EOF
 dn: $COMPUTER_DN
 changetype: modify
 replace: operatingSystem
@@ -873,13 +802,16 @@ operatingSystemVersion: $SYS_VER
 replace: operatingSystemServicePack
 operatingSystemServicePack: $SYS_SP
 EOF
+            local LDAP_STATUS=$?
+            set -e
 
-        if [ $? -eq 0 ]; then
-            echo "    [v] Atributos do OS atualizados com sucesso no AD!"
-            log_event "INFO" "Atributos operatingSystem injetados via GSSAPI com sucesso."
-        else
-            echo "    [!] Aviso: Falha ao gravar os atributos no objeto do AD."
-            log_event "WARN" "ldapmodify retornou erro durante a gravacao."
+            if [ $LDAP_STATUS -eq 0 ]; then
+                echo "    [v] Atributos do OS atualizados com sucesso no AD!"
+                log_event "INFO" "Atributos operatingSystem gravados via ldapmodify com sucesso."
+            else
+                echo "    [!] Aviso: Falha ao gravar os atributos no objeto do AD (Erro LDAP: $LDAP_STATUS)."
+                log_event "WARN" "ldapmodify retornou erro durante a gravacao."
+            fi
         fi
         
     else
@@ -891,11 +823,11 @@ EOF
         return 1
     fi
 
-
     unset SENHA_LOCAL
     mod_next
 }
 # end mod 5
+
 
 
 # MÓDULO 6: CONFIGURACAO DO SSSD  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
